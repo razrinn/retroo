@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { COLS, type Card } from "./lib";
 
 // Only the presenter's screen changes; everyone else keeps the normal board and follows the screen share.
@@ -7,26 +7,58 @@ const props = defineProps<{ cards: Card[] }>();
 const emit = defineEmits<{ close: []; addAction: [text: string] }>();
 
 // Column by column (Went well, then To improve); inside each, most reactions first, ties in writing order.
-const items = computed(() =>
-	["well", "improve"].flatMap((col) =>
+// The order is fixed when presenting starts and your place is kept by card, so reactions or new cards
+// never change what's on screen. Cards written meanwhile join the end of their column, tagged "New".
+const PRESENTED = ["well", "improve"];
+const shown = (c: Card) => PRESENTED.includes(c.col) && c.text !== null;
+const order = ref(
+	PRESENTED.flatMap((col) =>
 		props.cards
-			.filter((c) => c.col === col && c.text !== null)
+			.filter((c) => c.col === col && shown(c))
 			.map((c, i) => ({ c, i }))
 			.sort((a, b) => b.c.total - a.c.total || a.i - b.i)
-			.map(({ c }) => c),
+			.map(({ c }) => c.id),
 	),
 );
+const added = ref(new Set<string>());
+watch(
+	() => props.cards,
+	(cards) => {
+		const next = [...order.value];
+		for (const c of cards) {
+			if (!shown(c) || next.includes(c.id)) continue;
+			// After the last card of the same column, or before the next column's cards.
+			const col = PRESENTED.indexOf(c.col);
+			const byId = new Map(cards.map((x) => [x.id, x]));
+			let at = next.length;
+			for (let i = next.length - 1; i >= 0; i--) {
+				const other = PRESENTED.indexOf(byId.get(next[i])?.col ?? "");
+				if (other <= col) break;
+				at = i;
+			}
+			next.splice(at, 0, c.id);
+			added.value = new Set([...added.value, c.id]);
+		}
+		order.value = next;
+	},
+	{ deep: true },
+);
+const items = computed(() => order.value.map((id) => props.cards.find((c) => c.id === id)).filter((c): c is Card => !!c));
+const currentId = ref(order.value[0] ?? "");
+const current = computed(() => items.value.find((c) => c.id === currentId.value) ?? items.value[0]);
+const index = computed(() => Math.max(0, items.value.indexOf(current.value!)));
 const position = computed(() => {
 	const inCol = items.value.filter((c) => c.col === current.value?.col);
 	return `${inCol.indexOf(current.value!) + 1} of ${inCol.length}`;
 });
 const actions = computed(() => props.cards.filter((c) => c.col === "action"));
-const index = ref(0);
-const current = computed(() => items.value[Math.min(index.value, items.value.length - 1)]);
 const colLabel = (key: string) => COLS.find((c) => c.key === key)!;
 const draft = ref("");
 
-const go = (step: number) => (index.value = Math.max(0, Math.min(items.value.length - 1, index.value + step)));
+function go(step: number) {
+	const next = items.value[Math.max(0, Math.min(items.value.length - 1, index.value + step))];
+	if (next) currentId.value = next.id;
+}
 function onKey(e: KeyboardEvent) {
 	if ((e.target as HTMLElement).tagName === "INPUT") return;
 	if (e.key === "ArrowRight") go(1);
@@ -56,7 +88,10 @@ function add() {
 			<template v-else>
 				<button class="nav" aria-label="Previous card" :disabled="index === 0" @click="go(-1)">←</button>
 				<div class="slot">
-					<p class="meta">{{ colLabel(current.col).label }} · {{ position }}</p>
+					<p class="meta">
+						{{ colLabel(current.col).label }} · {{ position }}
+						<span v-if="added.has(current.id)" class="new">New</span>
+					</p>
 					<Transition name="zoom" mode="out-in">
 						<article :key="current.id" class="big" :class="`note-${current.col}`">
 							<p>{{ current.text }}</p>
@@ -120,6 +155,14 @@ header {
 .meta {
 	color: var(--muted);
 	font-weight: 600;
+}
+.new {
+	margin-left: 6px;
+	padding: 1px 8px;
+	border-radius: 999px;
+	font-size: 12px;
+	color: var(--accent);
+	background: var(--accent-soft);
 }
 .nav {
 	font-size: 22px;
