@@ -195,52 +195,53 @@ const phaseInfo = computed(
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 
 		<div class="top">
-			<section v-if="state.followUps.length" class="panel">
-				<h2>🔁 From last sprint<span v-if="state.previousTitle" class="muted"> · {{ state.previousTitle }}</span></h2>
-				<ul class="followups">
-					<li v-for="f in state.followUps" :key="f.id" :class="f.status">
-						<span class="mark" aria-hidden="true">{{ { open: "⬜", done: "✅", dropped: "🗑️" }[f.status] }}</span>
-						<span class="text">{{ f.text }}</span>
-						<span v-if="f.carried > 1" class="badge">carried ×{{ f.carried }}</span>
-						<template v-if="state.phase !== 'locked'">
-							<template v-if="f.status === 'open'">
-								<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'done' })">Done</button>
-								<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'dropped' })">Drop</button>
+			<div class="side">
+				<section class="panel mood">
+					<h2>🌡️ Team mood</h2>
+					<div class="bars" role="group" aria-label="Your rating">
+						<div v-for="(m, i) in MOODS" :key="i" class="bar">
+							<template v-if="state.mood.counts">
+								<span class="track"><span class="fill" :style="{ height: `${(state.mood.counts[i] / moodMax) * 100}%` }" /></span>
+								<span class="n">{{ state.mood.counts[i] }}</span>
 							</template>
-							<button v-else class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'open' })">Undo</button>
-						</template>
-					</li>
-				</ul>
-			</section>
-
-			<section class="panel mood">
-				<h2>🌡️ Team mood</h2>
-				<div class="bars" role="group" aria-label="Your rating">
-					<div v-for="(m, i) in MOODS" :key="i" class="bar">
-						<template v-if="state.mood.counts">
-							<span class="track"><span class="fill" :style="{ height: `${(state.mood.counts[i] / moodMax) * 100}%` }" /></span>
-							<span class="n">{{ state.mood.counts[i] }}</span>
-						</template>
-						<button
-							class="face"
-							:class="{ picked: state.mood.mine === i + 1 }"
-							:aria-pressed="state.mood.mine === i + 1"
-							:aria-label="`${i + 1} of 5${state.mood.counts ? `, ${state.mood.counts[i]} people` : ''}`"
-							:disabled="state.phase === 'locked'"
-							@click="send({ type: 'mood', value: i + 1 })"
-						>
-							{{ m }}
-						</button>
+							<button
+								class="face"
+								:class="{ picked: state.mood.mine === i + 1 }"
+								:aria-pressed="state.mood.mine === i + 1"
+								:aria-label="`${i + 1} of 5${state.mood.counts ? `, ${state.mood.counts[i]} people` : ''}`"
+								:disabled="state.phase === 'locked'"
+								@click="send({ type: 'mood', value: i + 1 })"
+							>
+								{{ m }}
+							</button>
+						</div>
 					</div>
-				</div>
-				<p v-if="!state.mood.counts" class="muted small-text">
-					{{ state.mood.rated }} of {{ state.mood.people }} rated · results show after reveal
-				</p>
-				<p v-else class="small-text">
-					<strong>{{ state.mood.average ?? "–" }}</strong> average
-					<template v-if="state.mood.previous !== null"> · last sprint {{ state.mood.previous }} {{ moodTrend }}</template>
-				</p>
-			</section>
+					<p v-if="!state.mood.counts" class="muted small-text">
+						{{ state.mood.rated }} of {{ state.mood.people }} rated · results show after reveal
+					</p>
+					<p v-else class="small-text">
+						<strong>{{ state.mood.average ?? "–" }}</strong> average
+						<template v-if="state.mood.previous !== null"> · last sprint {{ state.mood.previous }} {{ moodTrend }}</template>
+					</p>
+				</section>
+				<section v-if="state.followUps.length" class="panel followups-panel">
+					<h2>🔁 From last sprint<span v-if="state.previousTitle" class="muted"> · {{ state.previousTitle }}</span></h2>
+					<ul class="followups">
+						<li v-for="f in state.followUps" :key="f.id" :class="f.status">
+							<span class="mark" aria-hidden="true">{{ { open: "⬜", done: "✅", dropped: "🗑️" }[f.status] }}</span>
+							<span class="text">{{ f.text }}</span>
+							<span v-if="f.carried > 1" class="badge">carried ×{{ f.carried }}</span>
+							<template v-if="state.phase !== 'locked'">
+								<template v-if="f.status === 'open'">
+									<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'done' })">Done</button>
+									<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'dropped' })">Drop</button>
+								</template>
+								<button v-else class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'open' })">Undo</button>
+							</template>
+						</li>
+					</ul>
+				</section>
+			</div>
 
 			<Doodle ref="doodle" :locked="state.phase === 'locked'" @send="send" />
 		</div>
@@ -390,12 +391,26 @@ header h1 {
 .lock input {
 	width: 170px;
 }
+/* Mood and last sprint stacked in the left third, the doodle in the right two-thirds; one column on phones. */
 .top {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
 	gap: 16px;
 	align-items: start;
 	margin-bottom: 22px;
+}
+@media (max-width: 760px) {
+	.top {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+.side {
+	display: grid;
+	gap: 16px;
+}
+.followups-panel .followups {
+	max-height: 220px;
+	overflow-y: auto;
 }
 .top h2 {
 	font-size: 15px;
