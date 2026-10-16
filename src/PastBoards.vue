@@ -20,7 +20,7 @@ async function show() {
 	<main>
 		<h1><a href="/">retro</a> <span class="muted">· past boards</span></h1>
 		<form v-if="!boards" class="panel row" @submit.prevent="show">
-			<input v-model="password" type="password" placeholder="Create password" aria-label="Create password" required />
+			<input v-model="password" type="password" placeholder="Password" aria-label="Password" required />
 			<button class="primary">Show</button>
 		</form>
 		<p v-if="error" class="error" role="alert">{{ error }}</p>

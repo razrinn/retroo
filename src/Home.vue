@@ -57,7 +57,7 @@ async function create() {
 		<form class="panel" @submit.prevent="create">
 			<label for="title">Start a new retro</label>
 			<input id="title" v-model="title" maxlength="100" placeholder="Sprint 42 (optional)" />
-			<input v-model="password" type="password" placeholder="Create password" aria-label="Create password" required @change="loadBoards" />
+			<input v-model="password" type="password" placeholder="Password" aria-label="Password" required @change="loadBoards" />
 			<template v-if="boards">
 				<label for="previous" class="small-label">Bring open action items from</label>
 				<select id="previous" v-model="previous">

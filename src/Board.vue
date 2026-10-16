@@ -177,7 +177,7 @@ const phaseInfo = computed(
 			<button v-if="state.phase === 'writing'" class="primary" @click="reveal">Reveal 🃏</button>
 			<button v-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "🔓 Unlock" : "🔒 Lock" }}</button>
 			<form v-else class="row lock" @submit.prevent="setLocked(state.phase !== 'locked')">
-				<input v-model="lockPassword" type="password" placeholder="Create password" aria-label="Create password" required />
+				<input v-model="lockPassword" type="password" placeholder="Password" aria-label="Password" required />
 				<button>{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 				<button type="button" class="ghost" @click="showLock = false">Cancel</button>
 			</form>
