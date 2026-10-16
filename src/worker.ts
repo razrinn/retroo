@@ -4,10 +4,12 @@ const COLS = ["well", "improve", "action"];
 const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; // no 0/O, 1/I/L
 const MAX_TEXT = 500;
 const TIMER_SECONDS = [180, 300, 600];
+const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];
+const MAX_COMMENT = 300;
 
 type Phase = "writing" | "revealed" | "locked";
 type FollowUp = { text: string; carried: number };
-type Msg = { type: string; id?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number };
+type Msg = { type: string; id?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 
@@ -92,7 +94,8 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 			CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL);
 			CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, col TEXT NOT NULL, text TEXT NOT NULL, author TEXT NOT NULL, created_at INTEGER NOT NULL);
-			CREATE TABLE IF NOT EXISTS votes (card TEXT NOT NULL, voter TEXT NOT NULL, PRIMARY KEY (card, voter));
+			CREATE TABLE IF NOT EXISTS reactions (card TEXT NOT NULL, person TEXT NOT NULL, emoji TEXT NOT NULL, PRIMARY KEY (card, person, emoji));
+			CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, card TEXT NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS followups (id TEXT PRIMARY KEY, text TEXT NOT NULL, carried INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
 			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
 		`);
@@ -179,6 +182,7 @@ export class Board extends DurableObject<Env> {
 		const text = typeof msg.text === "string" ? msg.text.trim().slice(0, MAX_TEXT) : "";
 		const own = (id: unknown) =>
 			this.sql.exec("SELECT 1 FROM cards WHERE id = ? AND author = ?", String(id), client).toArray().length > 0;
+		const cardCol = (id: unknown) => this.sql.exec<{ col: string }>("SELECT col FROM cards WHERE id = ?", String(id)).toArray()[0]?.col;
 
 		switch (msg.type) {
 			case "name":
@@ -195,14 +199,27 @@ export class Board extends DurableObject<Env> {
 			case "delete":
 				if (phase !== "writing" || !own(msg.id)) return;
 				this.sql.exec("DELETE FROM cards WHERE id = ?", msg.id);
-				this.sql.exec("DELETE FROM votes WHERE card = ?", msg.id);
+				this.sql.exec("DELETE FROM reactions WHERE card = ?", msg.id);
+				this.sql.exec("DELETE FROM comments WHERE card = ?", msg.id);
 				break;
-			case "vote": {
-				if (phase !== "revealed") return;
-				const removed = this.sql.exec("DELETE FROM votes WHERE card = ? AND voter = ?", msg.id, client).rowsWritten;
-				if (!removed) this.sql.exec("INSERT INTO votes (card, voter) SELECT id, ? FROM cards WHERE id = ?", client, msg.id);
+			case "react": {
+				if (phase !== "revealed" || !REACTIONS.includes(String(msg.emoji))) return;
+				const removed = this.sql.exec("DELETE FROM reactions WHERE card = ? AND person = ? AND emoji = ?", msg.id, client, msg.emoji).rowsWritten;
+				if (!removed) this.sql.exec("INSERT INTO reactions (card, person, emoji) SELECT id, ?, ? FROM cards WHERE id = ?", client, msg.emoji, msg.id);
 				break;
 			}
+			case "comment": {
+				// Comments need a card you can see: any card once revealed, action items (never hidden) any time.
+				const col = cardCol(msg.id);
+				const body = typeof msg.text === "string" ? msg.text.trim().slice(0, MAX_COMMENT) : "";
+				if (phase === "locked" || !col || !body || (phase === "writing" && col !== "action")) return;
+				this.sql.exec("INSERT INTO comments (id, card, author, text, created_at) VALUES (?, ?, ?, ?, ?)", crypto.randomUUID(), msg.id, client, body, Date.now());
+				break;
+			}
+			case "uncomment":
+				if (phase === "locked") return;
+				if (!this.sql.exec("DELETE FROM comments WHERE id = ? AND author = ?", String(msg.id), client).rowsWritten) return;
+				break;
 			case "followup":
 				if (phase === "locked" || !["open", "done", "dropped"].includes(String(msg.status))) return;
 				this.sql.exec("UPDATE followups SET status = ? WHERE id = ?", msg.status, msg.id);
@@ -254,13 +271,24 @@ export class Board extends DurableObject<Env> {
 		const counts = [1, 2, 3, 4, 5].map((v) => moods.filter((m) => m.value === v).length);
 		const previousMood = this.meta("previous_mood");
 		const cards = this.sql
-			.exec<{ id: string; col: string; text: string; author: string; name: string; votes: number }>(
-				`SELECT c.id, c.col, c.text, c.author, COALESCE(p.name, 'Anonymous') AS name,
-					(SELECT COUNT(*) FROM votes v WHERE v.card = c.id) AS votes
+			.exec<{ id: string; col: string; text: string; author: string; name: string }>(
+				`SELECT c.id, c.col, c.text, c.author, COALESCE(p.name, 'Anonymous') AS name
 				FROM cards c LEFT JOIN people p ON p.id = c.author ORDER BY c.created_at`,
 			)
 			.toArray();
-		const myVotes = new Map(clients.map((c) => [c, new Set(this.sql.exec<{ card: string }>("SELECT card FROM votes WHERE voter = ?", c).toArray().map((r) => r.card))]));
+		const reactions = this.sql.exec<{ card: string; person: string; emoji: string }>("SELECT card, person, emoji FROM reactions").toArray();
+		const comments = this.sql
+			.exec<{ id: string; card: string; author: string; name: string; text: string }>(
+				`SELECT m.id, m.card, m.author, COALESCE(p.name, 'Anonymous') AS name, m.text
+				FROM comments m LEFT JOIN people p ON p.id = m.author ORDER BY m.created_at`,
+			)
+			.toArray();
+		// Counts per emoji in the fixed order, only the ones someone used.
+		const reactionsFor = (card: string, me: string) =>
+			REACTIONS.map((emoji) => {
+				const rows = reactions.filter((r) => r.card === card && r.emoji === emoji);
+				return { emoji, count: rows.length, mine: rows.some((r) => r.person === me) };
+			}).filter((r) => r.count > 0);
 
 		sockets.forEach((ws, i) => {
 			const me = clients[i];
@@ -286,7 +314,15 @@ export class Board extends DurableObject<Env> {
 						const mine = author === me;
 						// Hidden text never leaves the server, so devtools can't peek.
 						const hidden = phase === "writing" && c.col !== "action" && !mine;
-						return { ...c, text: hidden ? null : c.text, mine, voted: myVotes.get(me)!.has(c.id) };
+						const cardReactions = reactionsFor(c.id, me);
+						return {
+							...c,
+							text: hidden ? null : c.text,
+							mine,
+							reactions: cardReactions,
+							total: cardReactions.reduce((n, r) => n + r.count, 0),
+							comments: hidden ? [] : comments.filter((m) => m.card === c.id).map(({ card, author, ...m }) => ({ ...m, mine: author === me })),
+						};
 					}),
 				}),
 			);

@@ -61,7 +61,7 @@ test("create and list need the password", async () => {
 	assert.ok(list.some((b) => b.code === code));
 });
 
-test("hidden text, phases, votes and ownership", async () => {
+test("hidden text, phases, reactions and ownership", async () => {
 	const code = await create();
 	const a = await join(code, "alice-0001");
 	const b = await join(code, "bobby-0001");
@@ -75,20 +75,23 @@ test("hidden text, phases, votes and ownership", async () => {
 	assert.ok(!JSON.stringify(b.s).includes("alice-0001"), "client ids never leak");
 
 	await b.send({ type: "edit", id: well.id, text: "hacked" });
-	await b.send({ type: "vote", id: well.id });
+	await b.send({ type: "react", id: well.id, emoji: "👍" });
 	await a.send({ type: "add", col: "well", text: "x".repeat(900) });
 	assert.equal(a.s.cards[0].text, "secret");
-	assert.equal(a.s.cards[0].votes, 0, "no voting while writing");
+	assert.equal(a.s.cards[0].total, 0, "no reactions while writing");
 	assert.equal(a.s.cards[2].text.length, 500);
 
 	await b.send({ type: "reveal" });
 	assert.equal(b.s.phase, "revealed");
 	assert.equal(b.s.cards[0].text, "secret");
 
-	await b.send({ type: "vote", id: well.id });
-	await b.send({ type: "vote", id: well.id });
-	await b.send({ type: "vote", id: well.id });
-	assert.equal(b.s.cards[0].votes, 1, "one vote per person, toggles");
+	await b.send({ type: "react", id: well.id, emoji: "👍" });
+	await b.send({ type: "react", id: well.id, emoji: "🔥" });
+	await b.send({ type: "react", id: well.id, emoji: "🔥" }); // toggles off
+	await b.send({ type: "react", id: well.id, emoji: "🍕" }); // not in the set
+	await a.send({ type: "react", id: well.id, emoji: "👍" });
+	assert.deepEqual(b.s.cards[0].reactions, [{ emoji: "👍", count: 2, mine: true }]);
+	assert.equal(b.s.cards[0].total, 2, "every reaction counts once per person per emoji");
 
 	await a.send({ type: "delete", id: well.id });
 	assert.equal(a.s.cards.length, 3, "no deleting after reveal");
@@ -101,6 +104,32 @@ test("hidden text, phases, votes and ownership", async () => {
 	assert.equal(a.s.cards.length, 3, "locked boards are read-only");
 	assert.equal(a.s.mood.rated, 0);
 
+	a.close();
+	b.close();
+});
+
+test("comments: action items any time, other cards after reveal, delete only your own", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0006");
+	const b = await join(code, "bobby-0006");
+	await a.send({ type: "add", col: "well", text: "nice" });
+	await a.send({ type: "add", col: "action", text: "do it" });
+	const [well, action] = a.s.cards;
+
+	await b.send({ type: "comment", id: well.id, text: "peek" });
+	await b.send({ type: "comment", id: action.id, text: "on it" });
+	assert.equal(a.s.cards[0].comments.length, 0, "no comments on hidden-phase cards");
+	assert.deepEqual(a.s.cards[1].comments.map((m: any) => [m.name, m.text, m.mine]), [["bobby", "on it", false]]);
+
+	await a.send({ type: "reveal" });
+	await b.send({ type: "comment", id: well.id, text: "y".repeat(400) });
+	const mine = b.s.cards[0].comments[0];
+	assert.equal(mine.text.length, 300);
+	await a.send({ type: "uncomment", id: mine.id });
+	assert.equal(a.s.cards[0].comments.length, 1, "can't delete someone else's comment");
+	await b.send({ type: "uncomment", id: mine.id });
+	assert.equal(b.s.cards[0].comments.length, 0);
+	assert.ok(!JSON.stringify(a.s).includes("bobby-0006"), "commenter ids never leak");
 	a.close();
 	b.close();
 });

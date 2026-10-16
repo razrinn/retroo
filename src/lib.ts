@@ -1,5 +1,16 @@
 export type Phase = "writing" | "revealed" | "locked";
-export type Card = { id: string; col: string; text: string | null; name: string; mine: boolean; votes: number; voted: boolean };
+export type Reaction = { emoji: string; count: number; mine: boolean };
+export type Comment = { id: string; name: string; text: string; mine: boolean };
+export type Card = {
+	id: string;
+	col: string;
+	text: string | null;
+	name: string;
+	mine: boolean;
+	reactions: Reaction[];
+	total: number;
+	comments: Comment[];
+};
 export type FollowUp = { id: string; text: string; carried: number; status: "open" | "done" | "dropped" };
 export type Mood = { mine: number | null; rated: number; people: number; counts: number[] | null; average: number | null; previous: number | null };
 export type BoardState = {
@@ -21,6 +32,7 @@ export const COLS = [
 	{ key: "action", label: "Action items", icon: "🚀" },
 ];
 export const MOODS = ["😫", "😕", "😐", "🙂", "🤩"];
+export const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];
 
 // localStorage can throw (private mode, blocked storage); the app still works, it just forgets.
 export const load = (key: string) => {

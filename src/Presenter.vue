@@ -6,14 +6,20 @@ import { COLS, type Card } from "./lib";
 const props = defineProps<{ cards: Card[] }>();
 const emit = defineEmits<{ close: []; addAction: [text: string] }>();
 
-// Most-voted first; ties keep the order they were written in.
+// Column by column (Went well, then To improve); inside each, most reactions first, ties in writing order.
 const items = computed(() =>
-	props.cards
-		.map((c, i) => ({ c, i }))
-		.filter(({ c }) => c.col !== "action" && c.text !== null)
-		.sort((a, b) => b.c.votes - a.c.votes || a.i - b.i)
-		.map(({ c }) => c),
+	["well", "improve"].flatMap((col) =>
+		props.cards
+			.filter((c) => c.col === col && c.text !== null)
+			.map((c, i) => ({ c, i }))
+			.sort((a, b) => b.c.total - a.c.total || a.i - b.i)
+			.map(({ c }) => c),
+	),
 );
+const position = computed(() => {
+	const inCol = items.value.filter((c) => c.col === current.value?.col);
+	return `${inCol.indexOf(current.value!) + 1} of ${inCol.length}`;
+});
 const actions = computed(() => props.cards.filter((c) => c.col === "action"));
 const index = ref(0);
 const current = computed(() => items.value[Math.min(index.value, items.value.length - 1)]);
@@ -50,11 +56,18 @@ function add() {
 			<template v-else>
 				<button class="nav" aria-label="Previous card" :disabled="index === 0" @click="go(-1)">←</button>
 				<div class="slot">
-					<p class="meta">{{ index + 1 }} of {{ items.length }} · {{ colLabel(current.col).icon }} {{ colLabel(current.col).label }}</p>
+					<p class="meta">{{ colLabel(current.col).icon }} {{ colLabel(current.col).label }} · {{ position }}</p>
 					<Transition name="zoom" mode="out-in">
 						<article :key="current.id" class="big" :class="`note-${current.col}`">
 							<p>{{ current.text }}</p>
-							<footer>👍 {{ current.votes }} · {{ current.name }}</footer>
+							<footer>
+								<span v-for="r in current.reactions" :key="r.emoji" class="r">{{ r.emoji }} {{ r.count }}</span>
+								<span class="spacer" />
+								{{ current.name }}
+							</footer>
+							<ul v-if="current.comments.length" class="comments">
+								<li v-for="m in current.comments" :key="m.id"><strong>{{ m.name }}</strong> {{ m.text }}</li>
+							</ul>
 						</article>
 					</Transition>
 				</div>
@@ -129,8 +142,24 @@ header {
 	overflow-wrap: anywhere;
 }
 .big footer {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 12px;
 	font-weight: 600;
-	opacity: 0.8;
+	font-size: 17px;
+	opacity: 0.85;
+}
+.comments {
+	list-style: none;
+	margin: 18px 0 0;
+	padding: 14px 0 0;
+	border-top: 1.5px dashed currentColor;
+	font-size: 16px;
+	opacity: 0.9;
+}
+.comments li {
+	margin-bottom: 6px;
+	overflow-wrap: anywhere;
 }
 .note-well {
 	background: var(--note-well);

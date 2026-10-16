@@ -1,9 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
-import { type Card, type Phase, hash } from "./lib";
+import { type Card, type Phase, REACTIONS, hash } from "./lib";
 
 const props = defineProps<{ card: Card; phase: Phase; fresh: boolean; flipIndex: number | null }>();
-const emit = defineEmits<{ vote: []; edit: [text: string]; remove: [] }>();
+const emit = defineEmits<{ react: [emoji: string]; edit: [text: string]; remove: []; comment: [text: string]; uncomment: [id: string] }>();
+
+const picking = ref(false);
+const threadOpen = ref(false);
+const reply = ref("");
+// Same rule as the server: any card once revealed, action items (never hidden) any time.
+const canComment = computed(() => props.phase !== "locked" && (props.phase !== "writing" || props.card.col === "action"));
+function react(emoji: string) {
+	picking.value = false;
+	emit("react", emoji);
+}
+function send() {
+	if (reply.value.trim()) emit("comment", reply.value.trim());
+	reply.value = "";
+}
 
 const editing = ref(false);
 const draft = ref("");
@@ -27,7 +41,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 <template>
 	<article
 		class="note"
-		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null }]"
+		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null, raised: picking }]"
 		:style="{ rotate: tilt, animationDelay: delay }"
 	>
 		<template v-if="card.text === null">
@@ -55,18 +69,48 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 					<button v-if="!editing" class="ghost small" @click="startEdit">Edit</button>
 					<button v-if="phase === 'writing'" class="ghost small" @click="$emit('remove')">Delete</button>
 				</template>
-				<button
-					v-if="phase !== 'writing'"
-					class="vote"
-					:class="{ voted: card.voted }"
-					:disabled="phase === 'locked'"
-					:aria-pressed="card.voted"
-					:aria-label="`${card.votes} votes${card.voted ? ', you voted' : ''}`"
-					@click="$emit('vote')"
-				>
-					👍 <span :key="card.votes" class="count">{{ card.votes }}</span>
-				</button>
 			</footer>
+			<div v-if="phase !== 'writing' || card.comments.length || canComment" class="social">
+				<template v-if="phase !== 'writing'">
+					<button
+						v-for="r in card.reactions"
+						:key="r.emoji"
+						class="chip"
+						:class="{ mine: r.mine }"
+						:disabled="phase === 'locked'"
+						:aria-pressed="r.mine"
+						:aria-label="`${r.emoji} ${r.count}${r.mine ? ', including you' : ''}`"
+						@click="react(r.emoji)"
+					>
+						{{ r.emoji }} <span :key="r.count" class="count">{{ r.count }}</span>
+					</button>
+					<span v-if="phase !== 'locked'" class="picker">
+						<button class="chip add" :aria-expanded="picking" aria-label="Add reaction" @click="picking = !picking">＋🙂</button>
+						<span v-if="picking" class="menu" role="menu">
+							<button v-for="e in REACTIONS" :key="e" class="ghost" role="menuitem" @click="react(e)">{{ e }}</button>
+						</span>
+					</span>
+				</template>
+				<span class="spacer" />
+				<button
+					v-if="card.comments.length || canComment"
+					class="chip"
+					:aria-expanded="threadOpen"
+					:aria-label="`${card.comments.length} comments`"
+					@click="threadOpen = !threadOpen"
+				>
+					💬 {{ card.comments.length || "" }}
+				</button>
+			</div>
+			<div v-if="threadOpen" class="thread">
+				<p v-for="m in card.comments" :key="m.id" class="comment">
+					<strong>{{ m.name }}</strong> {{ m.text }}
+					<button v-if="m.mine && phase !== 'locked'" class="ghost small" aria-label="Delete comment" @click="emit('uncomment', m.id)">✕</button>
+				</p>
+				<form v-if="canComment" @submit.prevent="send">
+					<input v-model="reply" maxlength="300" placeholder="Reply…" aria-label="Write a comment" />
+				</form>
+			</div>
 		</template>
 	</article>
 </template>
@@ -79,6 +123,10 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 	margin-bottom: 12px;
 	box-shadow: var(--shadow);
 	transition: rotate 0.2s, translate 0.2s;
+}
+/* The tilt makes each note its own stacking layer, so lift the one with an open emoji menu above its neighbours. */
+.raised {
+	z-index: 10;
 }
 .note:hover {
 	rotate: 0deg !important;
@@ -141,18 +189,77 @@ textarea {
 	margin-bottom: 6px;
 	resize: vertical;
 }
-.vote {
-	border: 1.5px solid color-mix(in srgb, var(--tag) 35%, transparent);
-	background: transparent;
+.social {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	margin-top: 8px;
+}
+.chip {
+	border: 1.5px solid color-mix(in srgb, var(--tag) 30%, transparent);
+	background: color-mix(in srgb, var(--surface) 45%, transparent);
 	color: inherit;
 	border-radius: 999px;
-	padding: 1px 10px;
+	padding: 1px 8px;
 	font-size: 13px;
+	font-weight: 700;
 }
-.vote.voted {
+.chip.mine {
 	background: var(--tag);
 	border-color: var(--tag);
 	color: var(--surface);
+}
+.chip.add {
+	opacity: 0.7;
+	font-weight: 500;
+}
+.picker {
+	position: relative;
+}
+.menu {
+	position: absolute;
+	left: 0;
+	top: calc(100% + 4px);
+	z-index: 5;
+	display: grid;
+	grid-template-columns: repeat(4, 38px);
+	gap: 2px;
+	padding: 4px;
+	background: var(--surface);
+	border: 1.5px solid var(--border);
+	border-radius: 12px;
+	box-shadow: var(--shadow);
+	animation: drop 0.2s ease-out;
+}
+.menu button {
+	width: 38px;
+	height: 38px;
+	padding: 0;
+	font-size: 20px;
+	line-height: 1;
+}
+.menu button:hover {
+	scale: 1.2;
+}
+.thread {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1.5px dashed color-mix(in srgb, var(--tag) 30%, transparent);
+	font-size: 14px;
+}
+.comment {
+	margin: 0 0 6px;
+	overflow-wrap: anywhere;
+}
+.comment strong {
+	color: var(--tag);
+}
+.thread input {
+	background: color-mix(in srgb, var(--surface) 60%, transparent);
+	border-color: color-mix(in srgb, var(--tag) 30%, transparent);
+	padding: 5px 10px;
+	font-size: 14px;
 }
 .count {
 	display: inline-block;

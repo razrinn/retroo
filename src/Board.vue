@@ -246,7 +246,9 @@ const phaseInfo = computed(
 					:phase="state.phase"
 					:fresh="fresh.has(card.id)"
 					:flip-index="flipping.get(card.id) ?? null"
-					@vote="send({ type: 'vote', id: card.id })"
+					@react="(emoji) => send({ type: 'react', id: card.id, emoji })"
+					@comment="(text) => send({ type: 'comment', id: card.id, text })"
+					@uncomment="(id) => send({ type: 'uncomment', id })"
 					@edit="(text) => send({ type: 'edit', id: card.id, text })"
 					@remove="remove(card)"
 				/>
