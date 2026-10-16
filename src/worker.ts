@@ -110,6 +110,7 @@ export class Board extends DurableObject<Env> {
 	sql = this.ctx.storage.sql;
 	// ponytail: in-memory spam limit for emoji rain, resets if the object hibernates, which is fine for a toy
 	recentBursts = new Map<string, number[]>();
+	lastTyping = new Map<string, number>();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -339,6 +340,15 @@ export class Board extends DurableObject<Env> {
 				this.toEach(() => ({ unstroke: last.id }));
 				return;
 			}
+			case "typing": {
+				// "Someone is writing": relayed to everyone else, never stored, at most once per 2 seconds each.
+				const now = Date.now();
+				if (now - (this.lastTyping.get(client) ?? 0) < 2000) return;
+				this.lastTyping.set(client, now);
+				const name = this.sql.exec<{ name: string }>("SELECT name FROM people WHERE id = ?", client).toArray()[0]?.name ?? "";
+				this.toEach((c) => (c === client ? null : { typing: name }));
+				return;
+			}
 			case "reveal":
 				if (phase !== "writing") return;
 				this.setMeta("phase", "revealed");
@@ -350,10 +360,12 @@ export class Board extends DurableObject<Env> {
 	}
 
 	// Sends a per-person message to every open socket (no full board state).
+	// Sends a per-person message to every open socket (no full board state); null skips that person.
 	toEach(build: (client: string) => unknown) {
 		for (const s of this.ctx.getWebSockets()) {
 			if (s.readyState !== WebSocket.OPEN) continue;
-			s.send(JSON.stringify(build((s.deserializeAttachment() as { client: string }).client)));
+			const msg = build((s.deserializeAttachment() as { client: string }).client);
+			if (msg !== null) s.send(JSON.stringify(msg));
 		}
 	}
 

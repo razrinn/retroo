@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watchEffect } from "vue";
+import { computed, onUnmounted, ref, watch, watchEffect } from "vue";
 import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
 import Mascot from "./Mascot.vue";
@@ -7,6 +7,7 @@ import NoteCard from "./NoteCard.vue";
 import Presenter from "./Presenter.vue";
 import Timer from "./Timer.vue";
 import { demoSocket, resetDemo } from "./demo";
+import { setSound, soundOn, sounds } from "./sound";
 import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, post, save } from "./lib";
 
 // `demo` swaps the real WebSocket for the in-browser stand-in from demo.ts (the /demo page).
@@ -31,6 +32,9 @@ const doodle = ref<InstanceType<typeof Doodle>>();
 
 // Animation bookkeeping: cards that just appeared drop in, cards that just got revealed flip over.
 const fresh = ref(new Set<string>());
+// Reactions other people just added to your cards, shown as a small "+emoji" floating off the card.
+const floats = ref<{ id: number; card: string; emoji: string }[]>([]);
+let floatId = 0;
 const flipping = ref(new Map<string, number>());
 
 let ws: { readyState: number; send(data: string): void; close(): void } | null = null;
@@ -52,6 +56,26 @@ function onState(next: BoardState) {
 			flipping.value = new Map(wasHidden.map((id, i) => [id, i]));
 			setTimeout(() => (flipping.value = new Map()), 600 + wasHidden.length * 90);
 			washTo(moodColor(next));
+			hops.value++;
+			sounds.reveal(wasHidden.length);
+		}
+		const before = new Map(prev.cards.map((c) => [c.id, c]));
+		const gained: { card: string; emoji: string }[] = [];
+		for (const c of next.cards) {
+			const old = before.get(c.id);
+			if (!c.mine || !old) continue;
+			for (const r of c.reactions) {
+				const was = old.reactions.find((x) => x.emoji === r.emoji);
+				const mineAdded = r.mine && !was?.mine ? 1 : 0;
+				if (r.count - (was?.count ?? 0) - mineAdded > 0) gained.push({ card: c.id, emoji: r.emoji });
+			}
+		}
+		if (gained.length) {
+			const added = gained.map((g) => ({ ...g, id: floatId++ }));
+			floats.value = [...floats.value, ...added];
+			setTimeout(() => (floats.value = floats.value.filter((f) => !added.some((a) => a.id === f.id))), 1300);
+			// Browsers only allow vibration after the person has tapped the page; asking earlier logs an error.
+			if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(25);
 		}
 		const open = (s: BoardState) => s.followUps.filter((f) => f.status === "open").length;
 		if (open(prev) > 0 && open(next) === 0) confetti();
@@ -66,6 +90,7 @@ function onOpen() {
 function onMessage(data: any) {
 	// Full board states carry a phase; emoji rain and doodle strokes are small events of their own.
 	if ("phase" in data) onState(data);
+	else if ("typing" in data) typingUntil.value = { ...typingUntil.value, [data.typing]: Date.now() + 4000 };
 	else if (data.burst) rain.value?.drop(data.burst, data.name);
 	else doodle.value?.apply(data);
 }
@@ -161,6 +186,55 @@ watchEffect(() => {
 	else document.documentElement.style.removeProperty("--mood");
 });
 
+// "Someone is writing": other people's typing signals keep their face-down cards and bubble breathing
+// for 4 seconds. Ours goes out at most every 2 seconds while typing a card.
+const typingUntil = ref<Record<string, number>>({});
+const isTyping = (name: string) => (typingUntil.value[name] ?? 0) > clock.value;
+// Only each person's latest face-down card breathes, not all of them.
+const latestHidden = computed(() => {
+	const last: Record<string, string> = {};
+	for (const c of state.value?.cards ?? []) if (c.text === null) last[c.name] = c.id;
+	return last;
+});
+let lastTypingSent = 0;
+function typing() {
+	if (Date.now() - lastTypingSent < 2000) return;
+	lastTypingSent = Date.now();
+	send({ type: "typing" });
+}
+
+// Reveal glows softly once the room looks done: everyone online has written a card and rated the sprint.
+// People are matched by name, so this is a hint, not a gate.
+const ready = computed(() => {
+	const s = state.value;
+	if (!s || s.phase !== "writing" || s.online.length < 2) return false;
+	const writers = new Set(s.cards.map((c) => c.name));
+	return s.online.every((n) => writers.has(n)) && s.mood.rated >= s.online.length;
+});
+
+// The header Stickie mirrors the room: the timer wins when it's nearly up, otherwise it wears the
+// same mood as the background (yours while writing, the team's after reveal).
+const hops = ref(0);
+const clock = ref(Date.now());
+const tick = setInterval(() => (clock.value = Date.now()), 1000);
+onUnmounted(() => clearInterval(tick));
+const timeLeft = computed(() => (state.value?.timerEnd ? state.value.timerEnd - (clock.value + offset.value) : null));
+watch(timeLeft, (now, before) => {
+	if (now !== null && now <= 0 && before !== null && before > 0) sounds.timesUp();
+});
+const sound = ref(soundOn());
+function toggleSound() {
+	sound.value = !sound.value;
+	setSound(sound.value);
+}
+const headerFace = computed(() => (timeLeft.value === null ? "happy" : timeLeft.value <= 0 ? "startled" : timeLeft.value < 30_000 ? "worried" : "happy"));
+const headerMood = computed(() => {
+	if (headerFace.value !== "happy" || !state.value) return null;
+	const m = state.value.mood;
+	const level = state.value.phase === "writing" ? m.mine : (m.average ?? m.mine);
+	return level === null ? null : Math.round(level);
+});
+
 // On reveal the team color spreads out from the middle instead of fading in place. The page underneath
 // holds its old color until the wash has covered it (see :root.washing in style.css).
 const washColor = ref<string | null>(null);
@@ -188,7 +262,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 
 <template>
 	<form v-if="!name" class="gate panel" @submit.prevent="setName">
-		<Mascot :size="64" class="gate-mascot" />
+		<Mascot :size="64" class="gate-mascot" follow />
 		<h1>What's your name?</h1>
 		<input id="name" v-model="nameDraft" maxlength="40" placeholder="Your name" aria-label="Your name" required autofocus />
 		<button class="primary">Join board</button>
@@ -204,7 +278,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 	<p v-else-if="!state" class="gate muted">Connecting…</p>
 
 	<div v-else-if="needsMood" class="gate panel">
-		<Mascot :size="64" class="gate-mascot" />
+		<Mascot :size="64" class="gate-mascot" follow />
 		<h1>How was the sprint?</h1>
 		<p class="muted">Your rating is anonymous.</p>
 		<div class="faces" role="group" aria-label="Rate the sprint">
@@ -216,19 +290,30 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 
 	<main v-else>
 		<header>
-			<a href="/" class="brand"><Mascot :size="28" /> retroo</a>
+			<a href="/" class="brand"><Mascot :size="28" :mood="headerMood" :face="headerFace" :hop="hops" /> retroo</a>
 			<h1 v-if="state.title">{{ state.title }}</h1>
 			<button v-if="!demo" class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
 			<span v-if="status !== 'open'" class="muted">Reconnecting…</span>
 			<span class="spacer" />
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
-				<span v-for="p in state.online.slice(0, 6)" :key="p" class="bubble" :style="bubble(p)" :title="p">{{ initials(p) }}</span>
+				<span v-for="p in state.online.slice(0, 6)" :key="p" class="bubble" :class="{ typing: isTyping(p) }" :style="bubble(p)" :title="isTyping(p) ? `${p} is writing` : p">{{ initials(p) }}</span>
 				<span v-if="state.online.length > 6" class="bubble more">+{{ state.online.length - 6 }}</span>
 			</div>
+			<button class="ghost" :aria-pressed="sound" :title="sound ? 'Sound on' : 'Sound off'" :aria-label="sound ? 'Turn sound off' : 'Turn sound on'" @click="toggleSound">
+				{{ sound ? "🔈" : "🔇" }}
+			</button>
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
 			<button v-if="state.phase !== 'writing'" @click="presenting = true">Present</button>
-			<button v-if="state.phase === 'writing'" class="primary" @click="reveal">Reveal</button>
+			<button
+				v-if="state.phase === 'writing'"
+				class="primary"
+				:class="{ ready }"
+				:title="ready ? 'Everyone has written and rated' : undefined"
+				@click="reveal"
+			>
+				Reveal
+			</button>
 			<button v-if="demo" class="ghost" @click="setLocked(state.phase !== 'locked')">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 			<button v-else-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 			<form v-else class="row lock" @submit.prevent="setLocked(state.phase !== 'locked')">
@@ -289,8 +374,9 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 					<h2>Last sprint<span v-if="state.previousTitle" class="muted"> · {{ state.previousTitle }}</span></h2>
 					<ul class="followups">
 						<li v-for="f in state.followUps" :key="f.id" :class="f.status">
+							<svg v-if="f.status === 'done'" class="tick" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" /></svg>
 							<span class="text">{{ f.text }}</span>
-							<span v-if="f.carried > 1" class="badge">carried ×{{ f.carried }}</span>
+							<span v-if="f.carried > 1" class="badge" :class="{ slipping: f.carried >= 3 && f.status === 'open' }">carried ×{{ f.carried }}</span>
 							<template v-if="state.phase !== 'locked'">
 								<template v-if="f.status === 'open'">
 									<button class="act done" aria-label="Mark done" title="Done" @click="send({ type: 'followup', id: f.id, status: 'done' })">✓</button>
@@ -319,6 +405,8 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 					:phase="state.phase"
 					:fresh="fresh.has(card.id)"
 					:flip-index="flipping.get(card.id) ?? null"
+					:typing="latestHidden[card.name] === card.id && isTyping(card.name)"
+					:floats="floats.filter((f) => f.card === card.id)"
 					@react="(emoji) => send({ type: 'react', id: card.id, emoji })"
 					@comment="(text) => send({ type: 'comment', id: card.id, text })"
 					@uncomment="(id) => send({ type: 'uncomment', id })"
@@ -326,7 +414,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 					@remove="remove(card)"
 				/>
 				<form v-if="state.phase !== 'locked'" class="add" @submit.prevent="add(col.key)">
-					<input v-model="drafts[col.key]" maxlength="500" placeholder="+ Add a note" :aria-label="`Add a note to ${col.label}`" />
+					<input v-model="drafts[col.key]" maxlength="500" placeholder="+ Add a note" :aria-label="`Add a note to ${col.label}`" @input="typing" />
 				</form>
 			</section>
 		</div>
@@ -483,6 +571,23 @@ header h1 {
 	border: 2px solid var(--bg);
 	margin-left: -8px;
 }
+.primary.ready {
+	animation: ready-glow 2.4s ease-in-out infinite;
+}
+@keyframes ready-glow {
+	50% {
+		box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent), 0 0 18px 2px color-mix(in srgb, var(--accent) 35%, transparent);
+	}
+}
+.bubble.typing {
+	animation: breathe 1.4s ease-in-out infinite;
+}
+@keyframes breathe {
+	50% {
+		translate: 0 -3px;
+		box-shadow: 0 4px 10px -4px currentColor;
+	}
+}
 .bubble.more {
 	background: var(--surface);
 	color: var(--muted);
@@ -534,8 +639,44 @@ header h1 {
 .followups .dropped .text {
 	color: var(--muted);
 }
+/* Dropped items get a line drawn through them; done items get a tick that draws itself. */
 .followups .dropped .text {
-	text-decoration: line-through;
+	background: linear-gradient(currentColor, currentColor) left 55% / 100% 1.5px no-repeat;
+	animation: strike 0.35s ease-out;
+}
+@keyframes strike {
+	from {
+		background-size: 0 1.5px;
+	}
+}
+.tick {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+	fill: none;
+	stroke: var(--ok);
+	stroke-width: 2.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-dasharray: 16;
+	animation: draw 0.35s ease-out;
+}
+@keyframes draw {
+	from {
+		stroke-dashoffset: 16;
+	}
+}
+/* Items that keep slipping give a small nudge when the board opens. */
+.badge.slipping {
+	animation: nudge 0.5s ease-in-out 0.8s 2;
+}
+@keyframes nudge {
+	25% {
+		rotate: -6deg;
+	}
+	75% {
+		rotate: 6deg;
+	}
 }
 .act {
 	width: 28px;
@@ -569,6 +710,7 @@ header h1 {
 	border-color: var(--border);
 }
 .badge {
+	display: inline-block;
 	font-size: 12px;
 	font-weight: 700;
 	color: var(--warn);

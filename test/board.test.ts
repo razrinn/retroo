@@ -298,6 +298,19 @@ test("doodle: valid strokes only, sent on their own, undo your own, no clearing,
 	b.close();
 });
 
+test("typing signal goes to everyone else, at most every 2 seconds", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0010");
+	const b = await join(code, "bobby-0010");
+	await a.send({ type: "typing" });
+	await a.send({ type: "typing" }); // within 2s, dropped
+	const typing = (c: typeof a) => c.events.filter((e) => "typing" in e);
+	assert.deepEqual(typing(b), [{ typing: "alice" }]);
+	assert.deepEqual(typing(a), [], "you don't get your own typing signal");
+	a.close();
+	b.close();
+});
+
 test("unknown boards are 404", async () => {
 	await assert.rejects(join("AAAA-BBBB", "alice-0005"));
 	assert.equal((await post("/api/boards/AAAA-BBBB/lock", { password: PASSWORD, locked: true })).status, 404);

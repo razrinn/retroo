@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { REACTIONS } from "./lib";
+import { sounds } from "./sound";
 
 // Emoji rain: tap an emoji and it floats up on everyone's screen. Nothing is stored.
 const emit = defineEmits<{ send: [emoji: string] }>();
@@ -45,6 +46,7 @@ function drop(emoji: string, name: string) {
 		drops.value = drops.value.filter((d) => d.emoji !== emoji);
 		combos.value.push({ id: nextId++, emoji, names, count: seen.length, pulse: 0, leaving: false, timer: 0 });
 		holdCombo(combos.value[combos.value.length - 1]);
+		sounds.combo();
 		return;
 	}
 	rain(emoji, name);

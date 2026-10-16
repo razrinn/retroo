@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
-import { type Card, type Phase, REACTIONS, hash } from "./lib";
+import { type Card, type Phase, REACTIONS, hash, reducedMotion } from "./lib";
 
-const props = defineProps<{ card: Card; phase: Phase; fresh: boolean; flipIndex: number | null }>();
+const props = defineProps<{
+	card: Card;
+	phase: Phase;
+	fresh: boolean;
+	flipIndex: number | null;
+	typing?: boolean;
+	floats?: { id: number; emoji: string }[];
+}>();
 const emit = defineEmits<{ react: [emoji: string]; edit: [text: string]; remove: []; comment: [text: string]; uncomment: [id: string] }>();
 
 const picking = ref(false);
@@ -34,6 +41,13 @@ function finishEdit() {
 	if (draft.value.trim() && draft.value.trim() !== props.card.text) emit("edit", draft.value.trim());
 }
 
+// With a mouse, the note leans a few degrees toward the cursor, like paper.
+const lean = ref({ x: 0, y: 0 });
+function onPointerMove(e: PointerEvent) {
+	if (e.pointerType !== "mouse" || reducedMotion()) return;
+	const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+	lean.value = { x: ((e.clientY - r.top) / r.height - 0.5) * -6, y: ((e.clientX - r.left) / r.width - 0.5) * 6 };
+}
 const tilt = computed(() => `${((hash(props.card.id) % 7) - 3) * 0.5}deg`);
 const delay = computed(() => (props.flipIndex === null ? undefined : `${props.flipIndex * 90}ms`));
 </script>
@@ -41,14 +55,17 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 <template>
 	<article
 		class="note"
-		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null, raised: picking }]"
-		:style="{ rotate: tilt, animationDelay: delay }"
+		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null, raised: picking, typing }]"
+		:style="{ rotate: tilt, animationDelay: delay, '--rx': `${lean.x}deg`, '--ry': `${lean.y}deg` }"
+		@pointermove="onPointerMove"
+		@pointerleave="lean = { x: 0, y: 0 }"
 	>
 		<template v-if="card.text === null">
 			<span class="who">{{ card.name }}</span>
-			<span class="hidden-label">Hidden</span>
+			<span class="hidden-label">{{ typing ? "Writing…" : "Hidden" }}</span>
 		</template>
 		<template v-else>
+			<span v-for="f in floats" :key="f.id" class="float" aria-hidden="true">+{{ f.emoji }}</span>
 			<textarea
 				v-if="editing"
 				ref="box"
@@ -121,7 +138,8 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 	padding: 12px 14px 10px;
 	margin-bottom: 12px;
 	box-shadow: var(--shadow);
-	transition: rotate 0.2s, translate 0.2s;
+	transform: perspective(700px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+	transition: rotate 0.2s, translate 0.2s, transform 0.15s ease-out;
 }
 /* The tilt makes each note its own stacking layer, so lift the one with an open emoji menu above its neighbours. */
 .raised {
@@ -154,6 +172,31 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 	background: repeating-linear-gradient(-45deg, var(--surface), var(--surface) 7px, var(--bg) 7px, var(--bg) 14px);
 	border: 1.5px dashed var(--border);
 	box-shadow: none;
+}
+.note.back.typing {
+	animation: breathe 1.4s ease-in-out infinite;
+}
+@keyframes breathe {
+	50% {
+		border-color: var(--tag);
+		scale: 1.015;
+	}
+}
+.float {
+	position: absolute;
+	right: 14px;
+	top: 6px;
+	font-size: 18px;
+	font-weight: 800;
+	pointer-events: none;
+	animation: float-up 1.2s ease-out forwards;
+}
+@keyframes float-up {
+	to {
+		translate: 0 -34px;
+		opacity: 0;
+		scale: 1.3;
+	}
 }
 .hidden-label {
 	margin-left: auto;

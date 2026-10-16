@@ -40,7 +40,7 @@ async function create() {
 <template>
 	<main>
 		<div class="hero">
-			<Mascot :size="96" class="hero-mascot" />
+			<Mascot :size="96" class="hero-mascot" follow />
 			<h1>retroo</h1>
 			<p class="muted">Run your sprint retro together, in real time.</p>
 		</div>

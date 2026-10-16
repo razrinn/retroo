@@ -47,7 +47,7 @@ function seed(): Data {
 		reactions: [],
 		comments: [],
 		followUps: [
-			{ id: id(), text: "Write the onboarding doc (Sari)", carried: 2, status: "open" },
+			{ id: id(), text: "Write the onboarding doc (Sari)", carried: 3, status: "open" },
 			{ id: id(), text: "Fix flaky CI (Dina)", carried: 1, status: "open" },
 			{ id: id(), text: "Move standup to async (Budi)", carried: 1, status: "done" },
 		],
