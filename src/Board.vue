@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
+import EmojiRain from "./EmojiRain.vue";
 import NoteCard from "./NoteCard.vue";
 import Presenter from "./Presenter.vue";
 import Timer from "./Timer.vue";
@@ -21,6 +22,7 @@ const lockPassword = ref("");
 const presenting = ref(false);
 const copied = ref(false);
 const offset = ref(0);
+const rain = ref<InstanceType<typeof EmojiRain>>();
 
 // Animation bookkeeping: cards that just appeared drop in, cards that just got revealed flip over.
 const fresh = ref(new Set<string>());
@@ -59,7 +61,11 @@ function connect() {
 		everOpened = true;
 		status.value = "open";
 	};
-	ws.onmessage = (e) => onState(JSON.parse(e.data));
+	ws.onmessage = (e) => {
+		const data = JSON.parse(e.data);
+		if (data.burst) rain.value?.drop(data.burst, data.name);
+		else onState(data);
+	};
 	ws.onclose = () => {
 		if (stopped) return;
 		// A board that never opened is almost always a wrong code; otherwise it's a dropped connection.
@@ -264,6 +270,7 @@ const phaseInfo = computed(
 		</p>
 	</main>
 
+	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>
 

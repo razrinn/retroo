@@ -86,6 +86,8 @@ export default {
 
 export class Board extends DurableObject<Env> {
 	sql = this.ctx.storage.sql;
+	// ponytail: in-memory spam limit for emoji rain, resets if the object hibernates, which is fine for a toy
+	recentBursts = new Map<string, number[]>();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -240,6 +242,18 @@ export class Board extends DurableObject<Env> {
 				else if (TIMER_SECONDS.includes(seconds)) this.setMeta("timer_end", String(Date.now() + seconds * 1000));
 				else return;
 				break;
+			}
+			case "burst": {
+				// Emoji rain: relayed to everyone, never stored. At most 6 per person per 2 seconds.
+				if (!REACTIONS.includes(String(msg.emoji))) return;
+				const now = Date.now();
+				const recent = (this.recentBursts.get(client) ?? []).filter((t) => now - t < 2000);
+				if (recent.length >= 6) return;
+				this.recentBursts.set(client, [...recent, now]);
+				const name = this.sql.exec<{ name: string }>("SELECT name FROM people WHERE id = ?", client).toArray()[0]?.name ?? "";
+				const out = JSON.stringify({ burst: msg.emoji, name });
+				for (const s of this.ctx.getWebSockets()) if (s.readyState === WebSocket.OPEN) s.send(out);
+				return;
 			}
 			case "reveal":
 				if (phase !== "writing") return;

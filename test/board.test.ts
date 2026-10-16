@@ -29,9 +29,12 @@ type State = Record<string, any>;
 async function join(code: string, client: string) {
 	const ws = new WebSocket(`${base.replace("http", "ws")}/api/boards/${code}/ws?client=${client}&name=${client.split("-")[0]}`);
 	let state: State = {};
+	const bursts: State[] = [];
 	let seen = 0;
 	ws.onmessage = (e) => {
-		state = JSON.parse(e.data);
+		const data = JSON.parse(e.data);
+		if (data.burst) bursts.push(data);
+		else state = data;
 		seen++;
 	};
 	await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
@@ -45,6 +48,7 @@ async function join(code: string, client: string) {
 		get s() {
 			return state;
 		},
+		bursts,
 		async send(msg: object) {
 			ws.send(JSON.stringify(msg));
 			await settle();
@@ -202,6 +206,21 @@ test("open action items and mood carry over to the next sprint", async () => {
 	const fresh = await join(await create(), "alice-0004");
 	assert.deepEqual(fresh.s.followUps, []);
 	fresh.close();
+});
+
+test("emoji rain reaches everyone, only known emojis, with a spam limit", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0007");
+	const b = await join(code, "bobby-0007");
+	await a.send({ type: "burst", emoji: "🎉" });
+	await a.send({ type: "burst", emoji: "🍕" });
+	assert.deepEqual(b.bursts, [{ burst: "🎉", name: "alice" }]);
+	assert.equal(b.s.phase, "writing", "bursts don't replace board state");
+	for (let i = 0; i < 10; i++) a.send({ type: "burst", emoji: "🚀" });
+	await new Promise((r) => setTimeout(r, 500));
+	assert.equal(b.bursts.length, 6, "at most 6 per person per 2 seconds");
+	a.close();
+	b.close();
 });
 
 test("unknown boards are 404", async () => {
