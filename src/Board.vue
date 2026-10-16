@@ -316,8 +316,9 @@ const phaseInfo = computed(
 	background: var(--accent-soft);
 }
 .bars .face {
-	font-size: 22px;
-	padding: 2px 6px;
+	font-size: 34px;
+	width: 100%;
+	padding: 4px 0;
 	opacity: 0.45;
 }
 .bars .face.picked {
@@ -486,15 +487,17 @@ header h1 {
 	align-items: flex-end;
 	gap: 4px;
 }
+/* Five equal columns across the whole panel. */
 .bar {
-	width: 40px;
+	flex: 1;
+	min-width: 0;
 	display: grid;
 	justify-items: center;
 	gap: 2px;
 }
 .bar .track {
-	height: 44px;
-	width: 26px;
+	height: 52px;
+	width: 60%;
 	display: flex;
 	align-items: flex-end;
 }
