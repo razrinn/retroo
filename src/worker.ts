@@ -6,10 +6,15 @@ const MAX_TEXT = 500;
 const TIMER_SECONDS = [180, 300, 600];
 const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];
 const MAX_COMMENT = 300;
+const DOODLE_COLORS = ["#2a2723", "#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#7f77dd"];
+const DOODLE_WIDTHS = [3, 8];
+const MAX_STROKES = 2000;
+const MAX_POINTS = 500;
 
 type Phase = "writing" | "revealed" | "locked";
 type FollowUp = { text: string; carried: number };
-type Msg = { type: string; id?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
+type Stroke = { c: string; w: number; p: [number, number][] };
+type Msg = { type: string; stroke?: Stroke; id?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 
@@ -84,6 +89,21 @@ export default {
 	},
 } satisfies ExportedHandler<Env>;
 
+// Accepts only our colors and widths, points as 0..1 fractions rounded to 3 decimals, at most MAX_POINTS.
+function cleanStroke(raw: unknown): Stroke | null {
+	const s = raw as Stroke;
+	if (!s || !DOODLE_COLORS.includes(s.c) || !DOODLE_WIDTHS.includes(s.w) || !Array.isArray(s.p)) return null;
+	if (s.p.length < 1 || s.p.length > MAX_POINTS) return null;
+	const p: [number, number][] = [];
+	for (const pt of s.p) {
+		if (!Array.isArray(pt) || pt.length !== 2) return null;
+		const [x, y] = pt.map(Number);
+		if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return null;
+		p.push([Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]);
+	}
+	return { c: s.c, w: s.w, p };
+}
+
 export class Board extends DurableObject<Env> {
 	sql = this.ctx.storage.sql;
 	// ponytail: in-memory spam limit for emoji rain, resets if the object hibernates, which is fine for a toy
@@ -98,6 +118,7 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS reactions (card TEXT NOT NULL, person TEXT NOT NULL, emoji TEXT NOT NULL, PRIMARY KEY (card, person, emoji));
 			CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, card TEXT NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS followups (id TEXT PRIMARY KEY, text TEXT NOT NULL, carried INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
+			CREATE TABLE IF NOT EXISTS strokes (id TEXT PRIMARY KEY, author TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
 		`);
 	}
@@ -255,6 +276,38 @@ export class Board extends DurableObject<Env> {
 				for (const s of this.ctx.getWebSockets()) if (s.readyState === WebSocket.OPEN) s.send(out);
 				return;
 			}
+			// Doodle wall: strokes go out one at a time, separate from the board state, so a big drawing never
+			// makes card updates heavy. A newcomer asks for the whole wall once with "doodle".
+			case "doodle": {
+				const strokes = this.sql
+					.exec<{ id: string; author: string; data: string }>("SELECT id, author, data FROM strokes ORDER BY created_at")
+					.toArray()
+					.map((r) => ({ id: r.id, mine: r.author === client, ...JSON.parse(r.data) }));
+				ws.send(JSON.stringify({ doodle: strokes }));
+				return;
+			}
+			case "stroke": {
+				const stroke = cleanStroke(msg.stroke);
+				if (phase === "locked" || !stroke) return;
+				if (this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM strokes").one().n >= MAX_STROKES) return;
+				const id = crypto.randomUUID();
+				this.sql.exec("INSERT INTO strokes (id, author, data, created_at) VALUES (?, ?, ?, ?)", id, client, JSON.stringify(stroke), Date.now());
+				this.toEach((c) => ({ stroke: { id, mine: c === client, ...stroke } }));
+				return;
+			}
+			case "undo": {
+				if (phase === "locked") return;
+				const last = this.sql.exec<{ id: string }>("SELECT id FROM strokes WHERE author = ? ORDER BY created_at DESC LIMIT 1", client).toArray()[0];
+				if (!last) return;
+				this.sql.exec("DELETE FROM strokes WHERE id = ?", last.id);
+				this.toEach(() => ({ unstroke: last.id }));
+				return;
+			}
+			case "clear":
+				if (phase === "locked") return;
+				this.sql.exec("DELETE FROM strokes");
+				this.toEach(() => ({ doodle: [] }));
+				return;
 			case "reveal":
 				if (phase !== "writing") return;
 				this.setMeta("phase", "revealed");
@@ -263,6 +316,14 @@ export class Board extends DurableObject<Env> {
 				return;
 		}
 		this.broadcast();
+	}
+
+	// Sends a per-person message to every open socket (no full board state).
+	toEach(build: (client: string) => unknown) {
+		for (const s of this.ctx.getWebSockets()) {
+			if (s.readyState !== WebSocket.OPEN) continue;
+			s.send(JSON.stringify(build((s.deserializeAttachment() as { client: string }).client)));
+		}
 	}
 
 	webSocketClose() {

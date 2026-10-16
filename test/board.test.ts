@@ -29,12 +29,13 @@ type State = Record<string, any>;
 async function join(code: string, client: string) {
 	const ws = new WebSocket(`${base.replace("http", "ws")}/api/boards/${code}/ws?client=${client}&name=${client.split("-")[0]}`);
 	let state: State = {};
-	const bursts: State[] = [];
+	// Full board states carry a phase; everything else (emoji rain, doodle strokes) is an event.
+	const events: State[] = [];
 	let seen = 0;
 	ws.onmessage = (e) => {
 		const data = JSON.parse(e.data);
-		if (data.burst) bursts.push(data);
-		else state = data;
+		if ("phase" in data) state = data;
+		else events.push(data);
 		seen++;
 	};
 	await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
@@ -48,7 +49,10 @@ async function join(code: string, client: string) {
 		get s() {
 			return state;
 		},
-		bursts,
+		events,
+		get bursts() {
+			return events.filter((e) => e.burst);
+		},
 		async send(msg: object) {
 			ws.send(JSON.stringify(msg));
 			await settle();
@@ -219,6 +223,43 @@ test("emoji rain reaches everyone, only known emojis, with a spam limit", async 
 	for (let i = 0; i < 10; i++) a.send({ type: "burst", emoji: "🚀" });
 	await new Promise((r) => setTimeout(r, 500));
 	assert.equal(b.bursts.length, 6, "at most 6 per person per 2 seconds");
+	a.close();
+	b.close();
+});
+
+test("doodle: valid strokes only, sent on their own, undo your own, clear, read-only when locked", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0008");
+	const b = await join(code, "bobby-0008");
+	const line = { c: "#e24b4a", w: 3, p: [[0.1, 0.1], [0.5, 0.123456]] };
+	await a.send({ type: "stroke", stroke: line });
+	await a.send({ type: "stroke", stroke: { ...line, c: "#bada55" } }); // not our palette
+	await a.send({ type: "stroke", stroke: { ...line, p: [[0.1, 2]] } }); // off the canvas
+	await a.send({ type: "stroke", stroke: { ...line, p: Array(501).fill([0.5, 0.5]) } }); // too long
+	await b.send({ type: "stroke", stroke: { ...line, w: 8 } });
+
+	const strokes = b.events.filter((e) => e.stroke).map((e) => e.stroke);
+	assert.equal(strokes.length, 2);
+	assert.deepEqual(strokes[0].p, [[0.1, 0.1], [0.5, 0.123]], "points rounded to 3 decimals");
+	assert.deepEqual(strokes.map((s: any) => s.mine), [false, true]);
+	assert.ok(!("strokes" in b.s) && !JSON.stringify(b.s).includes("#e24b4a"), "board state never carries the drawing");
+
+	await b.send({ type: "doodle" });
+	assert.equal(b.events.at(-1)!.doodle.length, 2);
+
+	await b.send({ type: "undo" });
+	assert.equal(a.events.at(-1)!.unstroke, strokes[1].id, "undo removes your own last stroke");
+	await b.send({ type: "undo" }); // b has none left; a's stroke stays
+	await a.send({ type: "doodle" });
+	assert.equal(a.events.at(-1)!.doodle.length, 1);
+
+	await b.send({ type: "clear" });
+	assert.deepEqual(a.events.at(-1)!.doodle, []);
+
+	await post(`/api/boards/${code}/lock`, { password: PASSWORD, locked: true });
+	await a.send({ type: "stroke", stroke: line });
+	await a.send({ type: "doodle" });
+	assert.deepEqual(a.events.at(-1)!.doodle, [], "locked boards can't be drawn on");
 	a.close();
 	b.close();
 });
