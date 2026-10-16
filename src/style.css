@@ -21,32 +21,7 @@
 	--note-action-tag: #534ab7;
 	--shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 6px 14px -8px rgba(60, 45, 20, 0.35);
 	--font: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
-	color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-	:root {
-		--bg: #191816;
-		--dot: #2a2825;
-		--surface: #23211f;
-		--text: #eeebe5;
-		--muted: #a59f96;
-		--border: #37342f;
-		--accent: #afa9ec;
-		--accent-soft: #2c2850;
-		--danger: #f07a6c;
-		--warn: #e3a447;
-		--ok: #5dcaa5;
-		--note-well: #173d31;
-		--note-well-ink: #e1f5ee;
-		--note-well-tag: #9fe1cb;
-		--note-improve: #4a2a1d;
-		--note-improve-ink: #faece7;
-		--note-improve-tag: #f5c4b3;
-		--note-action: #2e2a55;
-		--note-action-ink: #eeedfe;
-		--note-action-tag: #cecbf6;
-		--shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.7);
-	}
+	color-scheme: light;
 }
 
 * {
