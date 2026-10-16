@@ -3,10 +3,11 @@ import { DurableObject } from "cloudflare:workers";
 const COLS = ["well", "improve", "action"];
 const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; // no 0/O, 1/I/L
 const MAX_TEXT = 500;
+const TIMER_SECONDS = [180, 300, 600];
 
 type Phase = "writing" | "revealed" | "locked";
 type FollowUp = { text: string; carried: number };
-type Msg = { type: string; id?: string; col?: string; text?: string; name?: string; status?: string };
+type Msg = { type: string; id?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 
@@ -48,13 +49,13 @@ export default {
 			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
 			const title = String(body.title ?? "").trim().slice(0, 100);
 			const previous = body.previous ? normalizeCode(String(body.previous)) : null;
-			const carried = previous ? await boardStub(env, previous).openFollowUps() : { title: "", items: [] };
+			const carried = previous ? await boardStub(env, previous).carryOver() : null;
 			const code = newCode();
 			await ensureIndex(env);
 			await env.DB.prepare("INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)")
 				.bind(code, title, Date.now())
 				.run();
-			await boardStub(env, code).init(title, carried.title, carried.items);
+			await boardStub(env, code).init(title, carried);
 			return json({ code });
 		}
 
@@ -93,6 +94,7 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, col TEXT NOT NULL, text TEXT NOT NULL, author TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS votes (card TEXT NOT NULL, voter TEXT NOT NULL, PRIMARY KEY (card, voter));
 			CREATE TABLE IF NOT EXISTS followups (id TEXT PRIMARY KEY, text TEXT NOT NULL, carried INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
+			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
 		`);
 	}
 
@@ -108,16 +110,23 @@ export class Board extends DurableObject<Env> {
 		return this.meta("phase") as Phase | undefined;
 	}
 
-	init(title: string, previousTitle: string, followUps: FollowUp[]) {
+	init(title: string, previous: { title: string; mood: number | null; items: FollowUp[] } | null) {
 		this.setMeta("title", title);
-		this.setMeta("previous_title", previousTitle);
 		this.setMeta("phase", "writing");
-		for (const f of followUps) this.sql.exec("INSERT INTO followups (id, text, carried) VALUES (?, ?, ?)", crypto.randomUUID(), f.text, f.carried);
+		if (!previous) return;
+		this.setMeta("previous_title", previous.title);
+		if (previous.mood !== null) this.setMeta("previous_mood", String(previous.mood));
+		for (const f of previous.items) this.sql.exec("INSERT INTO followups (id, text, carried) VALUES (?, ?, ?)", crypto.randomUUID(), f.text, f.carried);
 	}
 
-	// What the next sprint's board inherits: follow-ups still open (not done or dropped) plus this board's action items.
-	openFollowUps() {
-		if (!this.phase) return { title: "", items: [] };
+	moodAverage() {
+		const avg = this.sql.exec<{ avg: number | null }>("SELECT AVG(value) AS avg FROM moods").one().avg;
+		return avg === null ? null : Math.round(avg * 10) / 10;
+	}
+
+	// What the next sprint's board inherits: follow-ups still open (not done or dropped), this board's action items, and its mood.
+	carryOver() {
+		if (!this.phase) return null;
 		const items = this.sql
 			.exec<FollowUp>(
 				`SELECT text, carried FROM (
@@ -126,7 +135,7 @@ export class Board extends DurableObject<Env> {
 				) ORDER BY grp, ord`,
 			)
 			.toArray();
-		return { title: this.meta("title") ?? "", items };
+		return { title: this.meta("title") ?? "", mood: this.moodAverage(), items };
 	}
 
 	// Locking reveals too, so a locked board never keeps hidden cards. Unlock returns to revealed.
@@ -198,6 +207,20 @@ export class Board extends DurableObject<Env> {
 				if (phase === "locked" || !["open", "done", "dropped"].includes(String(msg.status))) return;
 				this.sql.exec("UPDATE followups SET status = ? WHERE id = ?", msg.status, msg.id);
 				break;
+			case "mood": {
+				const value = Number(msg.value);
+				if (phase === "locked" || !Number.isInteger(value) || value < 1 || value > 5) return;
+				this.sql.exec("INSERT INTO moods (person, value) VALUES (?, ?) ON CONFLICT(person) DO UPDATE SET value = excluded.value", client, value);
+				break;
+			}
+			case "timer": {
+				// Store only the end time; every browser counts down on its own.
+				const seconds = Number(msg.seconds);
+				if (seconds === 0) this.sql.exec("DELETE FROM meta WHERE key = 'timer_end'");
+				else if (TIMER_SECONDS.includes(seconds)) this.setMeta("timer_end", String(Date.now() + seconds * 1000));
+				else return;
+				break;
+			}
 			case "reveal":
 				if (phase !== "writing") return;
 				this.setMeta("phase", "revealed");
@@ -225,6 +248,11 @@ export class Board extends DurableObject<Env> {
 		const previousTitle = this.meta("previous_title") ?? "";
 		const followUps = this.sql.exec("SELECT id, text, carried, status FROM followups ORDER BY rowid").toArray();
 		const online = names([...new Set(clients)]);
+		const timerEnd = Number(this.meta("timer_end")) || null;
+		const moods = this.sql.exec<{ person: string; value: number }>("SELECT person, value FROM moods").toArray();
+		const people = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM people").one().n;
+		const counts = [1, 2, 3, 4, 5].map((v) => moods.filter((m) => m.value === v).length);
+		const previousMood = this.meta("previous_mood");
 		const cards = this.sql
 			.exec<{ id: string; col: string; text: string; author: string; name: string; votes: number }>(
 				`SELECT c.id, c.col, c.text, c.author, COALESCE(p.name, 'Anonymous') AS name,
@@ -243,6 +271,17 @@ export class Board extends DurableObject<Env> {
 					followUps,
 					phase,
 					online,
+					now: Date.now(),
+					timerEnd,
+					mood: {
+						mine: moods.find((m) => m.person === me)?.value ?? null,
+						rated: moods.length,
+						people,
+						// Totals only, never who picked what; hidden until reveal so early ratings don't sway later ones.
+						counts: phase === "writing" ? null : counts,
+						average: phase === "writing" ? null : this.moodAverage(),
+						previous: previousMood ? Number(previousMood) : null,
+					},
 					cards: cards.map(({ author, ...c }) => {
 						const mine = author === me;
 						// Hidden text never leaves the server, so devtools can't peek.
