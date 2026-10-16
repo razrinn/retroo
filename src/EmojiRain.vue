@@ -6,13 +6,52 @@ import { REACTIONS } from "./lib";
 const emit = defineEmits<{ send: [emoji: string] }>();
 
 type Drop = { id: number; emoji: string; name: string; x: number; drift: number; size: number; delay: number };
+type Combo = { id: number; emoji: string; names: string[]; count: number; pulse: number; leaving: boolean; timer: number };
 const PER_BURST = 6;
+// Combo: when COMBO_PEOPLE different people send the same emoji within COMBO_WINDOW ms, their rain
+// collapses into one big emoji in the middle (like Google Meet). More of it bumps the counter.
+const COMBO_PEOPLE = 3;
+const COMBO_WINDOW = 1500;
+const COMBO_HOLD = 1600;
 const drops = ref<Drop[]>([]);
+const combos = ref<Combo[]>([]);
+const recent = new Map<string, { name: string; at: number }[]>();
 const open = ref(false);
 let nextId = 0;
 
-// One burst message becomes a small cluster around a random spot; only the first one carries the name.
+function holdCombo(c: Combo) {
+	clearTimeout(c.timer);
+	c.timer = setTimeout(() => {
+		c.leaving = true;
+		setTimeout(() => (combos.value = combos.value.filter((x) => x.id !== c.id)), 400);
+	}, COMBO_HOLD);
+}
+
 function drop(emoji: string, name: string) {
+	const combo = combos.value.find((c) => c.emoji === emoji && !c.leaving);
+	if (combo) {
+		combo.count++;
+		combo.pulse++;
+		if (!combo.names.includes(name)) combo.names.push(name);
+		holdCombo(combo);
+		return;
+	}
+	const now = Date.now();
+	const seen = [...(recent.get(emoji) ?? []).filter((r) => now - r.at < COMBO_WINDOW), { name, at: now }];
+	recent.set(emoji, seen);
+	const names = [...new Set(seen.map((r) => r.name))];
+	if (names.length >= COMBO_PEOPLE) {
+		recent.delete(emoji);
+		drops.value = drops.value.filter((d) => d.emoji !== emoji);
+		combos.value.push({ id: nextId++, emoji, names, count: seen.length, pulse: 0, leaving: false, timer: 0 });
+		holdCombo(combos.value[combos.value.length - 1]);
+		return;
+	}
+	rain(emoji, name);
+}
+
+// One burst message becomes a small cluster around a random spot; only the first one carries the name.
+function rain(emoji: string, name: string) {
 	const center = 12 + Math.random() * 76;
 	const batch = Array.from({ length: PER_BURST }, (_, i) => ({
 		id: nextId++,
@@ -41,6 +80,13 @@ defineExpose({ drop });
 		>
 			{{ d.emoji }}<small v-if="d.name">{{ d.name }}</small>
 		</span>
+		<div class="combos">
+			<div v-for="c in combos" :key="c.id" class="combo" :class="{ leaving: c.leaving }">
+				<span :key="c.pulse" class="big">{{ c.emoji }}</span>
+				<strong :key="`n${c.count}`" class="count">×{{ c.count }}</strong>
+				<small>{{ c.names.slice(0, 2).join(", ") }}<template v-if="c.names.length > 2"> +{{ c.names.length - 2 }}</template></small>
+			</div>
+		</div>
 	</div>
 	<div class="bar">
 		<template v-if="open">
@@ -87,6 +133,59 @@ defineExpose({ drop });
 		translate: var(--drift) -80vh;
 		opacity: 0;
 		rotate: 20deg;
+	}
+}
+.combos {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 48px;
+}
+.combo {
+	display: grid;
+	justify-items: center;
+	gap: 4px;
+	animation: combo-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+	transition: opacity 0.4s, scale 0.4s;
+}
+.combo.leaving {
+	opacity: 0;
+	scale: 0.6;
+}
+.combo .big {
+	font-size: 128px;
+	line-height: 1;
+	filter: drop-shadow(0 10px 18px rgba(60, 45, 20, 0.25));
+	animation: combo-pulse 0.35s ease-out;
+}
+.combo .count {
+	font-size: 28px;
+	font-weight: 800;
+	color: var(--text);
+	background: var(--surface);
+	border-radius: 999px;
+	padding: 0 14px;
+	box-shadow: var(--shadow);
+	animation: pop 0.3s ease-out;
+}
+.combo small {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--muted);
+}
+@keyframes combo-in {
+	from {
+		opacity: 0;
+		scale: 0.2;
+		rotate: -15deg;
+	}
+}
+@keyframes combo-pulse {
+	40% {
+		scale: 1.18;
+		rotate: 6deg;
 	}
 }
 /* Without motion the drops just appear briefly near the bottom instead of floating up. */
