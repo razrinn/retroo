@@ -127,10 +127,11 @@ async function copyCode() {
 const cardsIn = (col: string) => state.value?.cards.filter((c) => c.col === col) ?? [];
 const needsMood = computed(() => state.value && state.value.mood.mine === null && state.value.phase !== "locked");
 const moodMax = computed(() => Math.max(1, ...(state.value?.mood.counts ?? [])));
-const moodTrend = computed(() => {
+// Change from last sprint's average, e.g. -2 or +0.4; null when there's nothing to compare.
+const moodDelta = computed(() => {
 	const m = state.value?.mood;
-	if (!m || m.average === null || m.previous === null) return "";
-	return m.average > m.previous ? "📈" : m.average < m.previous ? "📉" : "➡️";
+	if (!m || m.average === null || m.previous === null) return null;
+	return Math.round((m.average - m.previous) * 10) / 10;
 });
 const initials = (n: string) => n.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const bubble = (n: string) => ({ background: `hsl(${hash(n) % 360} 65% 82%)`, color: `hsl(${hash(n) % 360} 55% 22%)` });
@@ -197,7 +198,24 @@ const phaseInfo = computed(
 		<div class="top">
 			<div class="side">
 				<section class="panel mood">
-					<h2>🌡️ Team mood</h2>
+					<div class="mood-head">
+						<h2>🌡️ Team mood</h2>
+						<span v-if="state.mood.average === null" class="stat muted" title="Results show after reveal">
+							🙈 {{ state.mood.rated }}/{{ state.mood.people }}
+						</span>
+						<span v-else class="stat" :title="`${state.mood.rated} rated${state.mood.previous !== null ? ` · last sprint ${state.mood.previous}` : ''}`">
+							<strong>{{ state.mood.average.toFixed(1) }}</strong>
+							<span
+								v-if="moodDelta !== null"
+								class="delta"
+								:class="moodDelta > 0 ? 'up' : moodDelta < 0 ? 'down' : 'same'"
+								:aria-label="`${moodDelta > 0 ? 'up' : moodDelta < 0 ? 'down' : 'no change'} from last sprint`"
+							>
+								{{ moodDelta > 0 ? "▲" : moodDelta < 0 ? "▼" : "=" }} {{ moodDelta === 0 ? "" : Math.abs(moodDelta).toFixed(1) }}
+							</span>
+							<span class="muted" :aria-label="`${state.mood.rated} rated`">👥 {{ state.mood.rated }}</span>
+						</span>
+					</div>
 					<div class="bars" role="group" aria-label="Your rating">
 						<div v-for="(m, i) in MOODS" :key="i" class="bar">
 							<template v-if="state.mood.counts">
@@ -216,13 +234,6 @@ const phaseInfo = computed(
 							</button>
 						</div>
 					</div>
-					<p v-if="!state.mood.counts" class="muted small-text">
-						{{ state.mood.rated }} of {{ state.mood.people }} rated · results show after reveal
-					</p>
-					<p v-else class="small-text">
-						<strong>{{ state.mood.average ?? "–" }}</strong> average
-						<template v-if="state.mood.previous !== null"> · last sprint {{ state.mood.previous }} {{ moodTrend }}</template>
-					</p>
 				</section>
 				<section v-if="state.followUps.length" class="panel followups-panel">
 					<h2>🔁 From last sprint<span v-if="state.previousTitle" class="muted"> · {{ state.previousTitle }}</span></h2>
@@ -477,6 +488,45 @@ header h1 {
 	background: color-mix(in srgb, var(--warn) 14%, transparent);
 	border-radius: 999px;
 	padding: 1px 9px;
+}
+.mood-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+.mood-head h2 {
+	margin: 0;
+}
+.stat {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 600;
+}
+.stat strong {
+	font-size: 18px;
+	font-weight: 800;
+}
+.delta {
+	font-size: 12px;
+	font-weight: 800;
+	padding: 1px 7px;
+	border-radius: 999px;
+}
+.delta.up {
+	color: var(--ok);
+	background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+.delta.down {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.delta.same {
+	color: var(--muted);
+	background: color-mix(in srgb, var(--muted) 12%, transparent);
 }
 .small-text {
 	font-size: 13px;
