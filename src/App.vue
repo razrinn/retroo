@@ -11,7 +11,8 @@ if (rawCode && code !== rawCode) history.replaceState(null, "", `/b/${code}`);
 </script>
 
 <template>
-	<Board v-if="code" :code="code" />
+	<Board v-if="path === '/demo'" code="DEMO" demo />
+	<Board v-else-if="code" :code="code" />
 	<PastBoards v-else-if="path === '/boards'" />
 	<Home v-else />
 </template>

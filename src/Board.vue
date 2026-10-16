@@ -6,10 +6,12 @@ import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
 import Presenter from "./Presenter.vue";
 import Timer from "./Timer.vue";
+import { demoSocket, resetDemo } from "./demo";
 import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, post, save } from "./lib";
 
-const props = defineProps<{ code: string }>();
-document.title = `retroo · ${formatCode(props.code)}`;
+// `demo` swaps the real WebSocket for the in-browser stand-in from demo.ts (the /demo page).
+const props = defineProps<{ code: string; demo?: boolean }>();
+document.title = props.demo ? "retroo · Demo" : `retroo · ${formatCode(props.code)}`;
 
 let clientId = load("clientId");
 if (!clientId) save("clientId", (clientId = crypto.randomUUID()));
@@ -31,7 +33,7 @@ const doodle = ref<InstanceType<typeof Doodle>>();
 const fresh = ref(new Set<string>());
 const flipping = ref(new Map<string, number>());
 
-let ws: WebSocket | null = null;
+let ws: { readyState: number; send(data: string): void; close(): void } | null = null;
 let everOpened = false;
 let stopped = false;
 
@@ -56,22 +58,29 @@ function onState(next: BoardState) {
 	state.value = next;
 }
 
+function onOpen() {
+	everOpened = true;
+	status.value = "open";
+}
+function onMessage(data: any) {
+	// Full board states carry a phase; emoji rain and doodle strokes are small events of their own.
+	if ("phase" in data) onState(data);
+	else if (data.burst) rain.value?.drop(data.burst, data.name);
+	else doodle.value?.apply(data);
+}
+
 function connect() {
+	if (props.demo) {
+		ws = demoSocket(clientId, name.value, { open: onOpen, message: onMessage });
+		return;
+	}
 	const proto = location.protocol === "https:" ? "wss" : "ws";
 	const q = new URLSearchParams({ client: clientId, name: name.value });
-	ws = new WebSocket(`${proto}://${location.host}/api/boards/${props.code}/ws?${q}`);
-	ws.onopen = () => {
-		everOpened = true;
-		status.value = "open";
-	};
-	ws.onmessage = (e) => {
-		const data = JSON.parse(e.data);
-		// Full board states carry a phase; emoji rain and doodle strokes are small events of their own.
-		if ("phase" in data) onState(data);
-		else if (data.burst) rain.value?.drop(data.burst, data.name);
-		else doodle.value?.apply(data);
-	};
-	ws.onclose = () => {
+	const socket = new WebSocket(`${proto}://${location.host}/api/boards/${props.code}/ws?${q}`);
+	ws = socket;
+	socket.onopen = onOpen;
+	socket.onmessage = (e) => onMessage(JSON.parse(e.data));
+	socket.onclose = () => {
 		if (stopped) return;
 		// A board that never opened is almost always a wrong code; otherwise it's a dropped connection.
 		if (!everOpened) return (status.value = "missing");
@@ -111,6 +120,7 @@ function reveal() {
 }
 async function setLocked(locked: boolean) {
 	error.value = "";
+	if (props.demo) return send({ type: "lock", locked });
 	try {
 		await post(`/api/boards/${props.code}/lock`, { password: lockPassword.value, locked });
 		showLock.value = false;
@@ -118,6 +128,11 @@ async function setLocked(locked: boolean) {
 	} catch (e) {
 		error.value = (e as Error).message;
 	}
+}
+function startOver() {
+	if (!confirm("Reset the demo board to its starting cards?")) return;
+	resetDemo();
+	location.reload();
 }
 async function copyCode() {
 	await navigator.clipboard?.writeText(props.code);
@@ -171,7 +186,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 		<header>
 			<a href="/" class="brand"><Mascot :size="28" /> retroo</a>
 			<h1 v-if="state.title">{{ state.title }}</h1>
-			<button class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
+			<button v-if="!demo" class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
 			<span v-if="status !== 'open'" class="muted">Reconnecting…</span>
 			<span class="spacer" />
@@ -182,13 +197,20 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
 			<button v-if="state.phase !== 'writing'" @click="presenting = true">Present</button>
 			<button v-if="state.phase === 'writing'" class="primary" @click="reveal">Reveal</button>
-			<button v-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
+			<button v-if="demo" class="ghost" @click="setLocked(state.phase !== 'locked')">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
+			<button v-else-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 			<form v-else class="row lock" @submit.prevent="setLocked(state.phase !== 'locked')">
 				<input v-model="lockPassword" type="password" placeholder="Password" aria-label="Password" required />
 				<button>{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 				<button type="button" class="ghost" @click="showLock = false">Cancel</button>
 			</form>
 		</header>
+		<div v-if="demo" class="demo-banner" role="note">
+			<span><strong>Demo board.</strong> Dina, Budi and Sari are made up, and everything is saved in this browser only. Try writing a card, then Reveal.</span>
+			<span class="spacer" />
+			<button class="small" @click="startOver">Reset demo</button>
+			<a href="/" class="small">Back to home</a>
+		</div>
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 
 		<div class="top">
@@ -349,6 +371,22 @@ header {
 	gap: 10px;
 	align-items: center;
 	margin-bottom: 16px;
+}
+.demo-banner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 12px;
+	margin: -4px 0 16px;
+	padding: 10px 14px;
+	font-size: 14px;
+	color: var(--note-action-ink);
+	background: var(--note-action);
+	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border-radius: 12px;
+}
+.demo-banner .small {
+	font-size: 13px;
 }
 .gate-mascot {
 	justify-self: center;

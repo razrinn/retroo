@@ -62,6 +62,8 @@ async function create() {
 			</div>
 		</form>
 
+		<p class="demo-link"><a href="/demo">Try the demo board</a>, no password needed.</p>
+
 		<form class="panel" @submit.prevent="create">
 			<label for="title">New board</label>
 			<input id="title" v-model="title" maxlength="100" placeholder="Sprint 42 (optional)" />
@@ -127,6 +129,12 @@ label {
 .big {
 	font-size: 18px;
 	text-align: center;
+}
+.demo-link {
+	margin: -4px 0 14px;
+	text-align: center;
+	font-size: 14px;
+	color: var(--muted);
 }
 .foot {
 	text-align: center;

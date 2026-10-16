@@ -4,6 +4,8 @@
 
 ![retroo](public/og.png)
 
+Try it without an account at `/demo` on any deployment (for example [retroo.rzrn.dev/demo](https://retroo.rzrn.dev/demo)): a sample board that lives in your browser.
+
 ## Features
 
 - **Hidden until reveal:** write privately, then flip everyone's cards at once.
