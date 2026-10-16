@@ -233,10 +233,10 @@ const phaseInfo = computed(
 							<span v-if="f.carried > 1" class="badge">carried ×{{ f.carried }}</span>
 							<template v-if="state.phase !== 'locked'">
 								<template v-if="f.status === 'open'">
-									<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'done' })">Done</button>
-									<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'dropped' })">Drop</button>
+									<button class="act done" aria-label="Mark done" title="Done" @click="send({ type: 'followup', id: f.id, status: 'done' })">✓</button>
+									<button class="act drop" aria-label="Drop" title="Drop" @click="send({ type: 'followup', id: f.id, status: 'dropped' })">✕</button>
 								</template>
-								<button v-else class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'open' })">Undo</button>
+								<button v-else class="act undo" aria-label="Undo" title="Undo" @click="send({ type: 'followup', id: f.id, status: 'open' })">↩</button>
 							</template>
 						</li>
 					</ul>
@@ -437,6 +437,37 @@ header h1 {
 }
 .followups .dropped .text {
 	text-decoration: line-through;
+}
+.act {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 50%;
+	font-size: 14px;
+	font-weight: 800;
+	flex-shrink: 0;
+}
+.act.done {
+	color: var(--ok);
+	border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+	background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+}
+.act.done:hover {
+	background: var(--ok);
+	color: var(--surface);
+}
+.act.drop {
+	color: var(--danger);
+	border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+	background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+.act.drop:hover {
+	background: var(--danger);
+	color: var(--surface);
+}
+.act.undo {
+	color: var(--muted);
+	border-color: var(--border);
 }
 .badge {
 	font-size: 12px;
