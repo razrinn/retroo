@@ -5,7 +5,8 @@ const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; // no 0/O, 1/I/L
 const MAX_TEXT = 500;
 
 type Phase = "writing" | "revealed" | "locked";
-type Msg = { type: string; id?: string; col?: string; text?: string; name?: string };
+type FollowUp = { text: string; carried: number };
+type Msg = { type: string; id?: string; col?: string; text?: string; name?: string; status?: string };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 
@@ -43,15 +44,17 @@ export default {
 		const path = url.pathname;
 
 		if (req.method === "POST" && path === "/api/boards") {
-			const body = await req.json<{ password?: string; title?: string }>().catch(() => ({}) as never);
+			const body = await req.json<{ password?: string; title?: string; previous?: string }>().catch(() => ({}) as never);
 			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
 			const title = String(body.title ?? "").trim().slice(0, 100);
+			const previous = body.previous ? normalizeCode(String(body.previous)) : null;
+			const carried = previous ? await boardStub(env, previous).openFollowUps() : { title: "", items: [] };
 			const code = newCode();
 			await ensureIndex(env);
 			await env.DB.prepare("INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)")
 				.bind(code, title, Date.now())
 				.run();
-			await boardStub(env, code).init(title);
+			await boardStub(env, code).init(title, carried.title, carried.items);
 			return json({ code });
 		}
 
@@ -89,6 +92,7 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL);
 			CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, col TEXT NOT NULL, text TEXT NOT NULL, author TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS votes (card TEXT NOT NULL, voter TEXT NOT NULL, PRIMARY KEY (card, voter));
+			CREATE TABLE IF NOT EXISTS followups (id TEXT PRIMARY KEY, text TEXT NOT NULL, carried INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
 		`);
 	}
 
@@ -104,9 +108,25 @@ export class Board extends DurableObject<Env> {
 		return this.meta("phase") as Phase | undefined;
 	}
 
-	init(title: string) {
+	init(title: string, previousTitle: string, followUps: FollowUp[]) {
 		this.setMeta("title", title);
+		this.setMeta("previous_title", previousTitle);
 		this.setMeta("phase", "writing");
+		for (const f of followUps) this.sql.exec("INSERT INTO followups (id, text, carried) VALUES (?, ?, ?)", crypto.randomUUID(), f.text, f.carried);
+	}
+
+	// What the next sprint's board inherits: follow-ups still open (not done or dropped) plus this board's action items.
+	openFollowUps() {
+		if (!this.phase) return { title: "", items: [] };
+		const items = this.sql
+			.exec<FollowUp>(
+				`SELECT text, carried FROM (
+					SELECT text, carried + 1 AS carried, 0 AS grp, rowid AS ord FROM followups WHERE status = 'open'
+					UNION ALL SELECT text, 1, 1, created_at FROM cards WHERE col = 'action'
+				) ORDER BY grp, ord`,
+			)
+			.toArray();
+		return { title: this.meta("title") ?? "", items };
 	}
 
 	// Locking reveals too, so a locked board never keeps hidden cards. Unlock returns to revealed.
@@ -174,6 +194,10 @@ export class Board extends DurableObject<Env> {
 				if (!removed) this.sql.exec("INSERT INTO votes (card, voter) SELECT id, ? FROM cards WHERE id = ?", client, msg.id);
 				break;
 			}
+			case "followup":
+				if (phase === "locked" || !["open", "done", "dropped"].includes(String(msg.status))) return;
+				this.sql.exec("UPDATE followups SET status = ? WHERE id = ?", msg.status, msg.id);
+				break;
 			case "reveal":
 				if (phase !== "writing") return;
 				this.setMeta("phase", "revealed");
@@ -198,6 +222,8 @@ export class Board extends DurableObject<Env> {
 				: [];
 		const phase = this.phase;
 		const title = this.meta("title") ?? "";
+		const previousTitle = this.meta("previous_title") ?? "";
+		const followUps = this.sql.exec("SELECT id, text, carried, status FROM followups ORDER BY rowid").toArray();
 		const online = names([...new Set(clients)]);
 		const cards = this.sql
 			.exec<{ id: string; col: string; text: string; author: string; name: string; votes: number }>(
@@ -213,6 +239,8 @@ export class Board extends DurableObject<Env> {
 			ws.send(
 				JSON.stringify({
 					title,
+					previousTitle,
+					followUps,
 					phase,
 					online,
 					cards: cards.map(({ author, ...c }) => {

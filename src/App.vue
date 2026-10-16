@@ -2,7 +2,8 @@
 import { computed, onUnmounted, ref } from "vue";
 
 type Card = { id: string; col: string; text: string | null; name: string; mine: boolean; votes: number; voted: boolean };
-type BoardState = { title: string; phase: "writing" | "revealed" | "locked"; online: string[]; cards: Card[] };
+type FollowUp = { id: string; text: string; carried: number; status: "open" | "done" | "dropped" };
+type BoardState = { title: string; previousTitle: string; followUps: FollowUp[]; phase: "writing" | "revealed" | "locked"; online: string[]; cards: Card[] };
 type ListedBoard = { code: string; title: string; created_at: number };
 
 const COLS = [
@@ -48,6 +49,7 @@ async function post<T>(url: string, body: object): Promise<T> {
 const joinCode = ref("");
 const newTitle = ref("");
 const password = ref("");
+const previous = ref("");
 const error = ref("");
 
 function join() {
@@ -59,21 +61,22 @@ function join() {
 async function create() {
 	error.value = "";
 	try {
-		const { code } = await post<{ code: string }>("/api/boards", { title: newTitle.value, password: password.value });
+		const { code } = await post<{ code: string }>("/api/boards", { title: newTitle.value, password: password.value, previous: previous.value });
 		location.href = `/b/${code}`;
 	} catch (e) {
 		error.value = (e as Error).message;
 	}
 }
 
-// Past boards
+// Past boards; also feeds the "previous board" picker once the create password is typed.
 const boards = ref<ListedBoard[] | null>(null);
-async function loadBoards() {
+async function loadBoards(quiet = false) {
 	error.value = "";
 	try {
 		boards.value = await post<ListedBoard[]>("/api/boards/list", { password: password.value });
+		previous.value = boards.value[0]?.code ?? "";
 	} catch (e) {
-		error.value = (e as Error).message;
+		if (!quiet) error.value = (e as Error).message;
 	}
 }
 
@@ -175,9 +178,16 @@ if (page === "board") document.title = `retro · ${code}`;
 			<label for="title">New board</label>
 			<input id="title" v-model="newTitle" maxlength="100" placeholder="Sprint 42 (optional)" />
 			<div class="row">
-				<input v-model="password" type="password" placeholder="Create password" aria-label="Create password" required />
+				<input v-model="password" type="password" placeholder="Create password" aria-label="Create password" required @change="loadBoards(true)" />
 				<button>Create</button>
 			</div>
+			<template v-if="boards">
+				<label for="previous">Previous board (open action items carry over)</label>
+				<select id="previous" v-model="previous">
+					<option value="">None</option>
+					<option v-for="b in boards" :key="b.code" :value="b.code">{{ b.title || "Untitled" }} · {{ b.code }}</option>
+				</select>
+			</template>
 		</form>
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 		<p class="muted"><a href="/boards">Past boards</a></p>
@@ -185,7 +195,7 @@ if (page === "board") document.title = `retro · ${code}`;
 
 	<main v-else-if="page === 'list'" class="narrow">
 		<h1><a href="/">retro</a> · past boards</h1>
-		<form v-if="!boards" class="box" @submit.prevent="loadBoards">
+		<form v-if="!boards" class="box" @submit.prevent="loadBoards()">
 			<div class="row">
 				<input v-model="password" type="password" placeholder="Create password" aria-label="Create password" required />
 				<button>Show</button>
@@ -238,6 +248,24 @@ if (page === "board") document.title = `retro · ${code}`;
 				You're {{ name }}.
 				<a href="#" @click.prevent="nameDraft = name; name = ''">Change name</a>
 			</p>
+
+			<section v-if="state.followUps.length" class="followups">
+				<h2>From last sprint<template v-if="state.previousTitle"> ({{ state.previousTitle }})</template></h2>
+				<ul>
+					<li v-for="f in state.followUps" :key="f.id" :class="f.status">
+						<span class="mark" aria-hidden="true">{{ { open: "☐", done: "✓", dropped: "✕" }[f.status] }}</span>
+						<span class="text">{{ f.text }}</span>
+						<span v-if="f.carried > 1" class="badge">carried ×{{ f.carried }}</span>
+						<template v-if="state.phase !== 'locked'">
+							<template v-if="f.status === 'open'">
+								<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'done' })">Done</button>
+								<button class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'dropped' })">Drop</button>
+							</template>
+							<button v-else class="ghost small" @click="send({ type: 'followup', id: f.id, status: 'open' })">Undo</button>
+						</template>
+					</li>
+				</ul>
+			</section>
 
 			<div class="cols">
 				<section v-for="col in COLS" :key="col.key" :class="`col-${col.key}`">
@@ -337,6 +365,7 @@ h1 a,
 	font-weight: 600;
 }
 input,
+select,
 button {
 	font: inherit;
 	color: inherit;
@@ -346,7 +375,8 @@ button {
 	background: var(--surface);
 	min-width: 0;
 }
-input {
+input,
+select {
 	width: 100%;
 }
 button {
@@ -467,6 +497,45 @@ header form input {
 	gap: 4px;
 	font-size: 13px;
 	color: var(--muted);
+}
+.followups {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 12px 14px;
+	margin: 8px 0 16px;
+}
+.followups ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+.followups li {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 0;
+}
+.followups .text {
+	flex: 1;
+	overflow-wrap: anywhere;
+}
+.followups .done .text {
+	color: var(--muted);
+}
+.followups .dropped .text {
+	color: var(--muted);
+	text-decoration: line-through;
+}
+.followups .done .mark {
+	color: var(--well);
+}
+.badge {
+	font-size: 12px;
+	color: var(--improve);
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	padding: 0 8px;
 }
 .voted {
 	color: var(--accent);
