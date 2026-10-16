@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-// Stickie, the retro mascot: the app's sticky note with a face. Same drawing as public/favicon.svg.
+// Stickie, the retroo mascot: the app's sticky note with a face. Same drawing as public/favicon.svg.
 // `mood` 1-5 swaps in the Team mood faces, from miserable (1) to thrilled (5), each with its own note color.
 const props = withDefaults(defineProps<{ size?: number; face?: "happy" | "confused"; mood?: number }>(), { size: 40, face: "happy" });
 

@@ -41,7 +41,7 @@ async function create() {
 	<main>
 		<div class="hero">
 			<Mascot :size="96" class="hero-mascot" />
-			<h1>retro</h1>
+			<h1>retroo</h1>
 			<p class="muted">Sprint retrospectives</p>
 		</div>
 

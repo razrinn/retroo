@@ -3,14 +3,14 @@ import * as entrypoint from "./src/worker.ts" with { type: "cf-worker" };
 
 export default defineConfig({
 	worker: {
-		name: "retro",
+		name: "retroo",
 		compatibilityDate: "2026-10-06",
 		entrypoint,
-		domains: ["retro.rzrn.dev"],
+		domains: ["retroo.rzrn.dev"],
 		assets: { notFoundHandling: "single-page-application", runWorkerFirst: ["/api/*"] },
 		env: {
 			DB: bindings.d1(),
-			BOARD: bindings.durableObject({ worker: "retro", exportName: "Board" }),
+			BOARD: bindings.durableObject({ worker: "retroo", exportName: "Board" }),
 			CREATE_PASSWORD: bindings.secret(),
 		},
 		exports: {

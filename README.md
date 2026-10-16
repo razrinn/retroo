@@ -1,4 +1,4 @@
-# retro
+# retroo
 
 Sprint retro board on Cloudflare Workers: Vue, one Durable Object per board, D1 for the board list.
 
@@ -15,7 +15,7 @@ pnpm typecheck
 
 ```sh
 pnpm exec cf auth login
-pnpm deploy                      # serves at retro.rzrn.dev
+pnpm deploy                      # serves at retroo.rzrn.dev
 ```
 
 Set the `CREATE_PASSWORD` secret on the deployed Worker (20+ random characters). `cf` can't set a single secret yet, so use `pnpm dlx wrangler secret put CREATE_PASSWORD`.

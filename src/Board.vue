@@ -9,7 +9,7 @@ import Timer from "./Timer.vue";
 import { type BoardState, type Card, COLS, MOODS, confetti, formatCode, hash, load, post, save } from "./lib";
 
 const props = defineProps<{ code: string }>();
-document.title = `retro · ${formatCode(props.code)}`;
+document.title = `retroo · ${formatCode(props.code)}`;
 
 let clientId = load("clientId");
 if (!clientId) save("clientId", (clientId = crypto.randomUUID()));
@@ -169,7 +169,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 
 	<main v-else>
 		<header>
-			<a href="/" class="brand"><Mascot :size="28" /> retro</a>
+			<a href="/" class="brand"><Mascot :size="28" /> retroo</a>
 			<h1 v-if="state.title">{{ state.title }}</h1>
 			<button class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>

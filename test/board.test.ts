@@ -7,7 +7,7 @@ import { createServer, type ViteDevServer } from "vite";
 const PASSWORD = readFileSync(".dev.vars", "utf8").match(/^CREATE_PASSWORD=(.*)$/m)?.[1]?.trim();
 assert.ok(PASSWORD, "CREATE_PASSWORD missing from .dev.vars");
 
-process.env.RETRO_TEST = "1"; // in-memory storage, see vite.config.ts
+process.env.RETROO_TEST = "1"; // in-memory storage, see vite.config.ts
 let server: ViteDevServer;
 let base = "";
 before(async () => {
