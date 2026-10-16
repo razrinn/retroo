@@ -59,19 +59,21 @@ Local data lives in `.cloudflare/state/`. Delete that folder to start fresh.
    - `cloudflare.config.ts`, `domains: ["retroo.rzrn.dev"]`. Remove the line to use the free `*.workers.dev` address instead.
    - `index.html`, the `og:url` and `og:image` tags (link previews need full URLs).
 
-3. **Deploy.** This builds the app, uploads the Worker, creates the Durable Object class and attaches the domain. It should also create the D1 database; if it reports a missing database instead, create one in the Cloudflare dashboard and put its id in `cloudflare.config.ts` as `bindings.d1({ id: "..." })`.
+3. **Choose the password** used to create, list and lock boards (20+ random characters) and put it in `.env.secrets`, which git ignores:
 
    ```sh
-   pnpm deploy
+   echo "CREATE_PASSWORD=your-long-random-password" > .env.secrets
    ```
 
-4. **Set the password** used to create, list and lock boards. Use 20+ random characters. `cf` can't set a single secret yet, so use Wrangler for this one step:
+4. **Deploy.** This builds the app, uploads the Worker with the password, creates the Durable Object class and attaches the domain. It should also create the D1 database; if it reports a missing database instead, create one in the Cloudflare dashboard and put its id in `cloudflare.config.ts` as `bindings.d1({ id: "..." })`.
 
    ```sh
-   pnpm dlx wrangler secret put CREATE_PASSWORD
+   pnpm run deploy --secrets-file .env.secrets
    ```
 
-Later updates are just `pnpm deploy`; data and the password stay.
+   Use `pnpm run deploy`, not `pnpm deploy`; the latter is a built-in pnpm command.
+
+Later updates are just `pnpm run deploy`; data and the password stay. To change the password, edit `.env.secrets` and deploy with `--secrets-file` again.
 
 ### Free tier
 
