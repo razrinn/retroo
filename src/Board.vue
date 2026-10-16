@@ -6,7 +6,7 @@ import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
 import Presenter from "./Presenter.vue";
 import Timer from "./Timer.vue";
-import { type BoardState, type Card, COLS, MOODS, confetti, formatCode, hash, load, post, save } from "./lib";
+import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, post, save } from "./lib";
 
 const props = defineProps<{ code: string }>();
 document.title = `retroo · ${formatCode(props.code)}`;
@@ -280,6 +280,8 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 		<p class="foot muted">
 			You're {{ name }} ·
 			<a href="#" @click.prevent="nameDraft = name; name = ''">change name</a>
+			·
+			<a :href="GITHUB_URL" target="_blank" rel="noopener">GitHub</a>
 		</p>
 	</main>
 

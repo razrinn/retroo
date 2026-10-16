@@ -33,6 +33,7 @@ export const COLS = [
 ];
 // Mood levels 1-5, drawn as Stickie faces (Mascot.vue).
 export const MOODS = [1, 2, 3, 4, 5];
+export const GITHUB_URL = "https://github.com/razrinn/retroo";
 export const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];
 
 // localStorage can throw (private mode, blocked storage); the app still works, it just forgets.

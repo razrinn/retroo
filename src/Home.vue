@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import Mascot from "./Mascot.vue";
-import { type ListedBoard, formatCode, normalizeCode, post } from "./lib";
+import { GITHUB_URL, type ListedBoard, formatCode, normalizeCode, post } from "./lib";
 
 const joinCode = ref("");
 const title = ref("");
@@ -42,7 +42,7 @@ async function create() {
 		<div class="hero">
 			<Mascot :size="96" class="hero-mascot" />
 			<h1>retroo</h1>
-			<p class="muted">Sprint retrospectives</p>
+			<p class="muted">Run your sprint retro together, in real time.</p>
 		</div>
 
 		<form class="panel join" @submit.prevent="join">
@@ -77,7 +77,11 @@ async function create() {
 		</form>
 
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
-		<p class="foot"><a href="/boards">Past boards</a></p>
+		<p class="foot">
+			<a href="/boards">Past boards</a>
+			<span class="muted">·</span>
+			<a :href="GITHUB_URL" target="_blank" rel="noopener">GitHub</a>
+		</p>
 	</main>
 </template>
 

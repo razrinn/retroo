@@ -1,5 +1,23 @@
 {
 	"name": "retroo",
+	"version": "1.0.0",
+	"description": "A Cloudflare-first retro board: real-time sprint retrospectives on Workers, Durable Objects and D1.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/razrinn/retroo.git"
+	},
+	"homepage": "https://retroo.rzrn.dev",
+	"keywords": [
+		"retrospective",
+		"retro",
+		"scrum",
+		"agile",
+		"cloudflare",
+		"workers",
+		"durable-objects",
+		"vue"
+	],
 	"private": true,
 	"type": "module",
 	"scripts": {
