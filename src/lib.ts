@@ -27,9 +27,9 @@ export type BoardState = {
 export type ListedBoard = { code: string; title: string; created_at: number };
 
 export const COLS = [
-	{ key: "well", label: "Went well", icon: "✨" },
-	{ key: "improve", label: "To improve", icon: "🔧" },
-	{ key: "action", label: "Action items", icon: "🚀" },
+	{ key: "well", label: "Went well" },
+	{ key: "improve", label: "To improve" },
+	{ key: "action", label: "Action items" },
 ];
 export const MOODS = ["😫", "😕", "😐", "🙂", "🤩"];
 export const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];

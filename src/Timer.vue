@@ -30,12 +30,12 @@ function start(seconds: number) {
 <template>
 	<div class="timer">
 		<template v-if="remaining === null">
-			<button class="ghost" :aria-expanded="open" @click="open = !open">⏱️ Timer</button>
+			<button class="ghost" :aria-expanded="open" @click="open = !open">Timer</button>
 			<div v-if="open" class="menu">
 				<button v-for="m in [3, 5, 10]" :key="m" class="ghost" @click="start(m * 60)">{{ m }} min</button>
 			</div>
 		</template>
-		<button v-else-if="remaining === 0" class="up" @click="emit('set', 0)">⏰ Time's up!</button>
+		<button v-else-if="remaining === 0" class="up" @click="emit('set', 0)">Time's up</button>
 		<div v-else class="running" :class="{ low: remaining < 30_000 }" role="timer" :aria-label="`${label} left`">
 			<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
 				<circle cx="11" cy="11" r="8" class="track" />

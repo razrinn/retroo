@@ -94,7 +94,7 @@ onUnmounted(() => observer.disconnect());
 <template>
 	<section class="panel doodle" aria-label="Doodle wall">
 		<header>
-			<h2>🎨 Doodle</h2>
+			<h2>Doodle</h2>
 			<template v-if="!locked">
 				<div class="row swatches" role="group" aria-label="Color">
 					<button
@@ -111,14 +111,14 @@ onUnmounted(() => observer.disconnect());
 				<button class="ghost small" :class="{ on: width === 8 }" :aria-pressed="width === 8" @click="width = width === 8 ? 3 : 8">
 					{{ width === 8 ? "Thick" : "Thin" }}
 				</button>
-				<button class="ghost small" aria-label="Undo your last stroke" @click="emit('send', { type: 'undo' })">↩︎ Undo</button>
+				<button class="ghost small" aria-label="Undo your last stroke" @click="emit('send', { type: 'undo' })">Undo</button>
 			</template>
-			<span v-else class="muted small-text">view only</span>
+			<span v-else class="muted small-text">View only</span>
 		</header>
 		<div class="stage">
 			<canvas ref="canvas" :class="{ locked }" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" />
 			<p v-if="strokes === null" class="hint muted">Loading…</p>
-			<p v-else-if="!strokes.length && !locked" class="hint muted">Doodle while you wait. Everyone sees it.</p>
+			<p v-else-if="!strokes.length && !locked" class="hint muted">Shared with everyone on this board</p>
 		</div>
 	</section>
 </template>

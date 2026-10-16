@@ -45,8 +45,8 @@ function add() {
 <template>
 	<div class="presenter" role="dialog" aria-modal="true" aria-label="Presenter view">
 		<header>
-			<strong>🎤 Presenting</strong>
-			<span class="muted">← → to move, Esc to exit</span>
+			<strong>Presenting</strong>
+			<span class="muted">Arrow keys to move, Esc to exit</span>
 			<span class="spacer" />
 			<button @click="emit('close')">Exit</button>
 		</header>
@@ -56,7 +56,7 @@ function add() {
 			<template v-else>
 				<button class="nav" aria-label="Previous card" :disabled="index === 0" @click="go(-1)">←</button>
 				<div class="slot">
-					<p class="meta">{{ colLabel(current.col).icon }} {{ colLabel(current.col).label }} · {{ position }}</p>
+					<p class="meta">{{ colLabel(current.col).label }} · {{ position }}</p>
 					<Transition name="zoom" mode="out-in">
 						<article :key="current.id" class="big" :class="`note-${current.col}`">
 							<p>{{ current.text }}</p>
@@ -76,7 +76,7 @@ function add() {
 		</div>
 
 		<aside class="panel">
-			<h2>🚀 Action items</h2>
+			<h2>Action items</h2>
 			<ul>
 				<li v-for="a in actions" :key="a.id">{{ a.text }}</li>
 			</ul>

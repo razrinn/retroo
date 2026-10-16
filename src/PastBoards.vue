@@ -18,13 +18,13 @@ async function show() {
 
 <template>
 	<main>
-		<h1><a href="/">retro</a> <span class="muted">· past boards</span></h1>
+		<h1><a href="/">retro</a> <span class="muted">/ Past boards</span></h1>
 		<form v-if="!boards" class="panel row" @submit.prevent="show">
 			<input v-model="password" type="password" placeholder="Password" aria-label="Password" required />
 			<button class="primary">Show</button>
 		</form>
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
-		<p v-if="boards && !boards.length" class="muted">No boards yet. <a href="/">Start one</a></p>
+		<p v-if="boards && !boards.length" class="muted">No boards yet.</p>
 		<ul v-if="boards">
 			<li v-for="(b, i) in boards" :key="b.code" :style="{ rotate: `${(i % 3) - 1}deg` }">
 				<a :href="`/b/${b.code}`">{{ b.title || "Untitled" }}</a>

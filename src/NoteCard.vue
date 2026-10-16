@@ -45,9 +45,8 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 		:style="{ rotate: tilt, animationDelay: delay }"
 	>
 		<template v-if="card.text === null">
-			<span class="peek" aria-hidden="true">🙈</span>
 			<span class="who">{{ card.name }}</span>
-			<span class="sr-only">wrote a hidden card</span>
+			<span class="hidden-label">Hidden</span>
 		</template>
 		<template v-else>
 			<textarea
@@ -99,7 +98,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 					:aria-label="`${card.comments.length} comments`"
 					@click="threadOpen = !threadOpen"
 				>
-					💬 {{ card.comments.length || "" }}
+					{{ card.comments.length ? `${card.comments.length} comment${card.comments.length > 1 ? "s" : ""}` : "Comment" }}
 				</button>
 			</div>
 			<div v-if="threadOpen" class="thread">
@@ -156,8 +155,9 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 	border: 1.5px dashed var(--border);
 	box-shadow: none;
 }
-.peek {
-	font-size: 20px;
+.hidden-label {
+	margin-left: auto;
+	font-size: 12px;
 }
 p {
 	margin: 0 0 8px;

@@ -135,37 +135,27 @@ const moodDelta = computed(() => {
 });
 const initials = (n: string) => n.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const bubble = (n: string) => ({ background: `hsl(${hash(n) % 360} 65% 82%)`, color: `hsl(${hash(n) % 360} 55% 22%)` });
-const phaseInfo = computed(
-	() =>
-		({
-			writing: { label: "Writing", hint: "cards are hidden", emoji: "🙈" },
-			revealed: { label: "Revealed", hint: "vote on what matters", emoji: "👀" },
-			locked: { label: "Locked", hint: "read-only", emoji: "🔒" },
-		})[state.value?.phase ?? "writing"],
-);
+const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", locked: "Locked" })[state.value?.phase ?? "writing"]);
 </script>
 
 <template>
 	<form v-if="!name" class="gate panel" @submit.prevent="setName">
-		<p class="emoji" aria-hidden="true">👋</p>
-		<h1>Who's joining?</h1>
+		<h1>What's your name?</h1>
 		<input id="name" v-model="nameDraft" maxlength="40" placeholder="Your name" aria-label="Your name" required autofocus />
 		<button class="primary">Join board</button>
 	</form>
 
 	<div v-else-if="status === 'missing'" class="gate panel">
-		<p class="emoji" aria-hidden="true">🤷</p>
-		<h1>No board here</h1>
-		<p class="muted">Nothing matches <span class="mono">{{ formatCode(code) }}</span>. Check the code with whoever shared it.</p>
+		<h1>Board not found</h1>
+		<p class="muted">There's no board with code <span class="mono">{{ formatCode(code) }}</span>.</p>
 		<a href="/">Back to home</a>
 	</div>
 
 	<p v-else-if="!state" class="gate muted">Connecting…</p>
 
 	<div v-else-if="needsMood" class="gate panel">
-		<p class="emoji" aria-hidden="true">🌡️</p>
-		<h1>How was the sprint, {{ name }}?</h1>
-		<p class="muted">Anonymous. Everyone sees the results after reveal.</p>
+		<h1>How was the sprint?</h1>
+		<p class="muted">Your rating is anonymous.</p>
 		<div class="faces" role="group" aria-label="Rate the sprint">
 			<button v-for="(m, i) in MOODS" :key="i" class="face" :aria-label="`${i + 1} of 5`" @click="send({ type: 'mood', value: i + 1 })">{{ m }}</button>
 		</div>
@@ -175,8 +165,8 @@ const phaseInfo = computed(
 		<header>
 			<a href="/" class="brand">retro</a>
 			<h1 v-if="state.title">{{ state.title }}</h1>
-			<button class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied ✓" : formatCode(code) }}</button>
-			<span class="phase" :class="state.phase">{{ phaseInfo.emoji }} {{ phaseInfo.label }} <span class="hint">· {{ phaseInfo.hint }}</span></span>
+			<button class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
+			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
 			<span v-if="status !== 'open'" class="muted">Reconnecting…</span>
 			<span class="spacer" />
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
@@ -184,9 +174,9 @@ const phaseInfo = computed(
 				<span v-if="state.online.length > 6" class="bubble more">+{{ state.online.length - 6 }}</span>
 			</div>
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
-			<button v-if="state.phase !== 'writing'" @click="presenting = true">🎤 Present</button>
-			<button v-if="state.phase === 'writing'" class="primary" @click="reveal">Reveal 🃏</button>
-			<button v-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "🔓 Unlock" : "🔒 Lock" }}</button>
+			<button v-if="state.phase !== 'writing'" @click="presenting = true">Present</button>
+			<button v-if="state.phase === 'writing'" class="primary" @click="reveal">Reveal</button>
+			<button v-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 			<form v-else class="row lock" @submit.prevent="setLocked(state.phase !== 'locked')">
 				<input v-model="lockPassword" type="password" placeholder="Password" aria-label="Password" required />
 				<button>{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
@@ -199,9 +189,9 @@ const phaseInfo = computed(
 			<div class="side">
 				<section class="panel mood">
 					<div class="mood-head">
-						<h2>🌡️ Team mood</h2>
+						<h2>Team mood</h2>
 						<span v-if="state.mood.average === null" class="stat muted" title="Results show after reveal">
-							🙈 {{ state.mood.rated }}/{{ state.mood.people }}
+							{{ state.mood.rated }}/{{ state.mood.people }} rated
 						</span>
 						<span v-else class="stat" :title="`${state.mood.rated} rated${state.mood.previous !== null ? ` · last sprint ${state.mood.previous}` : ''}`">
 							<strong>{{ state.mood.average.toFixed(1) }}</strong>
@@ -213,7 +203,7 @@ const phaseInfo = computed(
 							>
 								{{ moodDelta > 0 ? "▲" : moodDelta < 0 ? "▼" : "=" }} {{ moodDelta === 0 ? "" : Math.abs(moodDelta).toFixed(1) }}
 							</span>
-							<span class="muted" :aria-label="`${state.mood.rated} rated`">👥 {{ state.mood.rated }}</span>
+							<span class="muted">{{ state.mood.rated }} rated</span>
 						</span>
 					</div>
 					<div class="bars" role="group" aria-label="Your rating">
@@ -236,10 +226,9 @@ const phaseInfo = computed(
 					</div>
 				</section>
 				<section v-if="state.followUps.length" class="panel followups-panel">
-					<h2>🔁 From last sprint<span v-if="state.previousTitle" class="muted"> · {{ state.previousTitle }}</span></h2>
+					<h2>Last sprint<span v-if="state.previousTitle" class="muted"> · {{ state.previousTitle }}</span></h2>
 					<ul class="followups">
 						<li v-for="f in state.followUps" :key="f.id" :class="f.status">
-							<span class="mark" aria-hidden="true">{{ { open: "⬜", done: "✅", dropped: "🗑️" }[f.status] }}</span>
 							<span class="text">{{ f.text }}</span>
 							<span v-if="f.carried > 1" class="badge">carried ×{{ f.carried }}</span>
 							<template v-if="state.phase !== 'locked'">
@@ -260,7 +249,7 @@ const phaseInfo = computed(
 		<div class="cols">
 			<section v-for="col in COLS" :key="col.key" class="col" :class="`col-${col.key}`">
 				<h2>
-					<span aria-hidden="true">{{ col.icon }}</span> {{ col.label }}
+					{{ col.label }}
 					<span class="count">{{ cardsIn(col.key).length }}</span>
 				</h2>
 				<NoteCard
@@ -305,9 +294,6 @@ const phaseInfo = computed(
 }
 .gate p {
 	margin: 0;
-}
-.emoji {
-	font-size: 44px;
 }
 .faces {
 	display: flex;
@@ -372,15 +358,24 @@ header h1 {
 	background: var(--surface);
 	border: 1.5px solid var(--border);
 }
+.phase::before {
+	content: "";
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	margin-right: 6px;
+	border-radius: 50%;
+	background: currentColor;
+	vertical-align: 1px;
+}
+.phase.locked {
+	color: var(--muted);
+}
 .phase.writing {
 	color: var(--warn);
 }
 .phase.revealed {
 	color: var(--ok);
-}
-.phase .hint {
-	font-weight: 500;
-	color: var(--muted);
 }
 .people {
 	display: flex;

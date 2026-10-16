@@ -39,15 +39,15 @@ async function create() {
 <template>
 	<main>
 		<div class="hero">
-			<span class="deco d1" aria-hidden="true">✨</span>
-			<span class="deco d2" aria-hidden="true">🔧</span>
-			<span class="deco d3" aria-hidden="true">🚀</span>
+			<span class="deco d1" aria-hidden="true" />
+			<span class="deco d2" aria-hidden="true" />
+			<span class="deco d3" aria-hidden="true" />
 			<h1>retro</h1>
-			<p class="muted">Look back, laugh a little, fix one thing.</p>
+			<p class="muted">Sprint retrospectives</p>
 		</div>
 
 		<form class="panel join" @submit.prevent="join">
-			<label for="code">Got a code?</label>
+			<label for="code">Join a board</label>
 			<div class="row">
 				<input
 					id="code"
@@ -64,13 +64,13 @@ async function create() {
 		</form>
 
 		<form class="panel" @submit.prevent="create">
-			<label for="title">Start a new retro</label>
+			<label for="title">New board</label>
 			<input id="title" v-model="title" maxlength="100" placeholder="Sprint 42 (optional)" />
 			<input v-model="password" type="password" placeholder="Password" aria-label="Password" required @change="loadBoards" />
 			<template v-if="boards">
-				<label for="previous" class="small-label">Bring open action items from</label>
+				<label for="previous" class="small-label">Carry over action items from</label>
 				<select id="previous" v-model="previous">
-					<option value="">Nothing, fresh start</option>
+					<option value="">None</option>
 					<option v-for="b in boards" :key="b.code" :value="b.code">{{ b.title || "Untitled" }} · {{ formatCode(b.code) }}</option>
 				</select>
 			</template>
