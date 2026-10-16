@@ -6,16 +6,12 @@
 
 ## Features
 
-- **Hidden until reveal.** Everyone writes at once; other people's cards stay face-down (the text never leaves the server) until someone clicks Reveal, then they flip over.
-- **Three columns:** Went well, To improve, Action items. Action items are always visible.
-- **Reactions:** eight emoji, one per person per card, all count the same.
-- **Comments** on any card after reveal, and on action items any time.
-- **Team mood:** everyone rates the sprint 1 to 5 before writing; the average and the change from last sprint show after reveal.
-- **Action items carry over.** Pick the previous board when creating a new one: its open action items show up under "Last sprint" to mark done or drop. Items added late to the old board still arrive.
-- **Presenter view:** one card at a time, column by column, most reactions first, with its comments.
-- **Shared timer** (3, 5 or 10 minutes), **doodle wall**, and **emoji rain** with combos when several people send the same emoji.
-- **Lock** a finished board to make it read-only. Boards are kept forever and listed under Past boards.
-- **Access:** anyone with a board code can join; creating, listing and locking boards need one shared password.
+- **Hidden until reveal:** write privately, then flip everyone's cards at once.
+- **Reactions and comments** on every card.
+- **Team mood** each sprint, compared with the last one.
+- **Action items carry over** to the next sprint until they're done.
+- **Presenter view**, **shared timer**, **doodle wall** and **emoji rain**.
+- **Join with a code**; one shared password to create boards.
 
 ## How it works
 
