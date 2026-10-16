@@ -25,7 +25,6 @@ const copied = ref(false);
 const offset = ref(0);
 const rain = ref<InstanceType<typeof EmojiRain>>();
 const doodle = ref<InstanceType<typeof Doodle>>();
-const doodling = ref(false);
 
 // Animation bookkeeping: cards that just appeared drop in, cards that just got revealed flip over.
 const fresh = ref(new Set<string>());
@@ -184,7 +183,6 @@ const phaseInfo = computed(
 				<span v-if="state.online.length > 6" class="bubble more">+{{ state.online.length - 6 }}</span>
 			</div>
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
-			<button class="ghost" @click="doodling = true">🎨 Doodle</button>
 			<button v-if="state.phase !== 'writing'" @click="presenting = true">🎤 Present</button>
 			<button v-if="state.phase === 'writing'" class="primary" @click="reveal">Reveal 🃏</button>
 			<button v-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "🔓 Unlock" : "🔒 Lock" }}</button>
@@ -243,6 +241,8 @@ const phaseInfo = computed(
 					<template v-if="state.mood.previous !== null"> · last sprint {{ state.mood.previous }} {{ moodTrend }}</template>
 				</p>
 			</section>
+
+			<Doodle ref="doodle" :locked="state.phase === 'locked'" @send="send" />
 		</div>
 
 		<div class="cols">
@@ -276,7 +276,6 @@ const phaseInfo = computed(
 		</p>
 	</main>
 
-	<Doodle v-if="doodling && state" ref="doodle" :locked="state.phase === 'locked'" @close="doodling = false" @send="send" />
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>
@@ -395,6 +394,7 @@ header h1 {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 	gap: 16px;
+	align-items: start;
 	margin-bottom: 22px;
 }
 .top h2 {

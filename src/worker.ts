@@ -303,11 +303,6 @@ export class Board extends DurableObject<Env> {
 				this.toEach(() => ({ unstroke: last.id }));
 				return;
 			}
-			case "clear":
-				if (phase === "locked") return;
-				this.sql.exec("DELETE FROM strokes");
-				this.toEach(() => ({ doodle: [] }));
-				return;
 			case "reveal":
 				if (phase !== "writing") return;
 				this.setMeta("phase", "revealed");

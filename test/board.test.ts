@@ -227,7 +227,7 @@ test("emoji rain reaches everyone, only known emojis, with a spam limit", async 
 	b.close();
 });
 
-test("doodle: valid strokes only, sent on their own, undo your own, clear, read-only when locked", async () => {
+test("doodle: valid strokes only, sent on their own, undo your own, no clearing, read-only when locked", async () => {
 	const code = await create();
 	const a = await join(code, "alice-0008");
 	const b = await join(code, "bobby-0008");
@@ -253,13 +253,12 @@ test("doodle: valid strokes only, sent on their own, undo your own, clear, read-
 	await a.send({ type: "doodle" });
 	assert.equal(a.events.at(-1)!.doodle.length, 1);
 
-	await b.send({ type: "clear" });
-	assert.deepEqual(a.events.at(-1)!.doodle, []);
-
+	await b.send({ type: "clear" }); // there is no clear-all
 	await post(`/api/boards/${code}/lock`, { password: PASSWORD, locked: true });
 	await a.send({ type: "stroke", stroke: line });
+	await a.send({ type: "undo" });
 	await a.send({ type: "doodle" });
-	assert.deepEqual(a.events.at(-1)!.doodle, [], "locked boards can't be drawn on");
+	assert.equal(a.events.at(-1)!.doodle.length, 1, "nothing clears it, and locked boards can't be drawn on or undone");
 	a.close();
 	b.close();
 });

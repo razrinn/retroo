@@ -6,7 +6,7 @@ type Stroke = { c: string; w: number; p: [number, number][] };
 type Saved = Stroke & { id: string; mine: boolean };
 
 const props = defineProps<{ locked: boolean }>();
-const emit = defineEmits<{ close: []; send: [msg: object] }>();
+const emit = defineEmits<{ send: [msg: object] }>();
 
 const COLORS = ["#2a2723", "#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#7f77dd"];
 const color = ref(COLORS[0]);
@@ -81,24 +81,22 @@ function up() {
 	current = null;
 }
 
-function clearAll() {
-	if (confirm("Clear the whole doodle wall for everyone?")) emit("send", { type: "clear" });
-}
-
+// The panel's width follows the page layout, so watch the canvas itself rather than the window.
+let observer: ResizeObserver;
 onMounted(() => {
-	resize();
-	addEventListener("resize", resize);
+	observer = new ResizeObserver(resize);
+	observer.observe(canvas.value!);
 	emit("send", { type: "doodle" });
 });
-onUnmounted(() => removeEventListener("resize", resize));
+onUnmounted(() => observer.disconnect());
 </script>
 
 <template>
-	<div class="doodle" role="dialog" aria-modal="true" aria-label="Doodle wall">
+	<section class="panel doodle" aria-label="Doodle wall">
 		<header>
-			<strong>🎨 Doodle wall</strong>
+			<h2>🎨 Doodle</h2>
 			<template v-if="!locked">
-				<div class="row" role="group" aria-label="Color">
+				<div class="row swatches" role="group" aria-label="Color">
 					<button
 						v-for="c in COLORS"
 						:key="c"
@@ -110,78 +108,65 @@ onUnmounted(() => removeEventListener("resize", resize));
 						@click="color = c"
 					/>
 				</div>
-				<div class="row" role="group" aria-label="Brush size">
-					<button class="ghost" :class="{ on: width === 3 }" :aria-pressed="width === 3" @click="width = 3">Thin</button>
-					<button class="ghost" :class="{ on: width === 8 }" :aria-pressed="width === 8" @click="width = 8">Thick</button>
-				</div>
-				<button class="ghost" @click="emit('send', { type: 'undo' })">↩︎ Undo</button>
-				<button class="ghost" @click="clearAll">🧽 Clear all</button>
+				<button class="ghost small" :class="{ on: width === 8 }" :aria-pressed="width === 8" @click="width = width === 8 ? 3 : 8">
+					{{ width === 8 ? "Thick" : "Thin" }}
+				</button>
+				<button class="ghost small" aria-label="Undo your last stroke" @click="emit('send', { type: 'undo' })">↩︎ Undo</button>
 			</template>
-			<span v-else class="muted">Locked, view only</span>
-			<span class="spacer" />
-			<button @click="emit('close')">Done</button>
+			<span v-else class="muted small-text">view only</span>
 		</header>
 		<div class="stage">
-			<canvas
-				ref="canvas"
-				:class="{ locked }"
-				@pointerdown="down"
-				@pointermove="move"
-				@pointerup="up"
-				@pointercancel="up"
-			/>
+			<canvas ref="canvas" :class="{ locked }" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" />
 			<p v-if="strokes === null" class="hint muted">Loading…</p>
-			<p v-else-if="!strokes.length && !locked" class="hint muted">Draw something. Everyone sees it.</p>
+			<p v-else-if="!strokes.length && !locked" class="hint muted">Doodle while you wait. Everyone sees it.</p>
 		</div>
-	</div>
+	</section>
 </template>
 
 <style scoped>
-.doodle {
-	position: fixed;
-	inset: 0;
-	z-index: 50;
-	display: grid;
-	grid-template-rows: auto 1fr;
-	gap: 12px;
-	padding: 16px;
-	background: var(--bg);
-}
 header {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 10px;
+	gap: 6px 10px;
+	margin-bottom: 8px;
+}
+h2 {
+	font-size: 15px;
+	margin-right: auto;
+}
+.swatches {
+	gap: 4px;
 }
 .swatch {
-	width: 28px;
-	height: 28px;
+	width: 20px;
+	height: 20px;
 	padding: 0;
 	border-radius: 50%;
-	border: 3px solid var(--surface);
+	border: 2px solid var(--surface);
 	box-shadow: 0 0 0 1.5px var(--border);
 }
 .swatch.on {
-	box-shadow: 0 0 0 2.5px var(--text);
+	box-shadow: 0 0 0 2px var(--text);
 }
 button.on {
 	background: var(--accent-soft);
 	color: var(--accent);
 }
+.small-text {
+	font-size: 13px;
+}
 .stage {
 	position: relative;
 	display: grid;
 	place-items: center;
-	min-height: 0;
-	container-type: size;
 }
 canvas {
+	width: 100%;
+	max-width: 420px; /* small enough that it never pushes the cards out of view */
 	aspect-ratio: 16 / 10;
-	width: min(100cqw, 160cqh); /* largest 16:10 box that fits the space left under the toolbar */
-	background: var(--surface);
-	border: 1.5px solid var(--border);
-	border-radius: 16px;
-	box-shadow: var(--shadow);
+	background: var(--bg) radial-gradient(var(--dot) 1px, transparent 1px) 0 0 / 16px 16px;
+	border-radius: 10px;
 	touch-action: none;
 	cursor: crosshair;
 }
@@ -190,6 +175,8 @@ canvas.locked {
 }
 .hint {
 	position: absolute;
+	margin: 0;
+	font-size: 13px;
 	pointer-events: none;
 }
 </style>
