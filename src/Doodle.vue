@@ -163,7 +163,6 @@ button.on {
 }
 canvas {
 	width: 100%;
-	max-width: 420px; /* small enough that it never pushes the cards out of view */
 	aspect-ratio: 16 / 10;
 	background: var(--bg) radial-gradient(var(--dot) 1px, transparent 1px) 0 0 / 16px 16px;
 	border-radius: 10px;
