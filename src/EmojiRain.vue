@@ -5,15 +5,28 @@ import { REACTIONS } from "./lib";
 // Emoji rain: tap an emoji and it floats up on everyone's screen. Nothing is stored.
 const emit = defineEmits<{ send: [emoji: string] }>();
 
-type Drop = { id: number; emoji: string; name: string; x: number; drift: number; size: number };
+type Drop = { id: number; emoji: string; name: string; x: number; drift: number; size: number; delay: number };
+const PER_BURST = 6;
 const drops = ref<Drop[]>([]);
 const open = ref(false);
 let nextId = 0;
 
+// One burst message becomes a small cluster around a random spot; only the first one carries the name.
 function drop(emoji: string, name: string) {
-	const d = { id: nextId++, emoji, name, x: 8 + Math.random() * 84, drift: (Math.random() - 0.5) * 120, size: 30 + Math.random() * 18 };
-	drops.value.push(d);
-	setTimeout(() => (drops.value = drops.value.filter((x) => x !== d)), 2600);
+	const center = 12 + Math.random() * 76;
+	const batch = Array.from({ length: PER_BURST }, (_, i) => ({
+		id: nextId++,
+		emoji,
+		name: i === 0 ? name : "",
+		x: Math.min(96, Math.max(2, center + (Math.random() - 0.5) * 16)),
+		drift: (Math.random() - 0.5) * 160,
+		size: (i === 0 ? 40 : 22) + Math.random() * 16,
+		delay: i * 70 + Math.random() * 60,
+	}));
+	drops.value.push(...batch);
+	// Compare ids, not objects: the array hands back reactive copies, so object identity never matches.
+	const ids = new Set(batch.map((d) => d.id));
+	setTimeout(() => (drops.value = drops.value.filter((d) => !ids.has(d.id))), 3200);
 }
 defineExpose({ drop });
 </script>
@@ -24,9 +37,9 @@ defineExpose({ drop });
 			v-for="d in drops"
 			:key="d.id"
 			class="drop"
-			:style="{ left: `${d.x}%`, fontSize: `${d.size}px`, '--drift': `${d.drift}px` }"
+			:style="{ left: `${d.x}%`, fontSize: `${d.size}px`, '--drift': `${d.drift}px`, animationDelay: `${d.delay}ms` }"
 		>
-			{{ d.emoji }}<small>{{ d.name }}</small>
+			{{ d.emoji }}<small v-if="d.name">{{ d.name }}</small>
 		</span>
 	</div>
 	<div class="bar">
@@ -53,6 +66,7 @@ defineExpose({ drop });
 	display: grid;
 	justify-items: center;
 	line-height: 1;
+	opacity: 0;
 	animation: rise 2.6s cubic-bezier(0.25, 0.6, 0.4, 1) forwards;
 }
 .drop small {
@@ -65,13 +79,21 @@ defineExpose({ drop });
 	margin-top: 2px;
 }
 @keyframes rise {
-	15% {
+	from,
+	60% {
 		opacity: 1;
 	}
 	to {
 		translate: var(--drift) -80vh;
 		opacity: 0;
 		rotate: 20deg;
+	}
+}
+/* Without motion the drops just appear briefly near the bottom instead of floating up. */
+@media (prefers-reduced-motion: reduce) {
+	.drop {
+		opacity: 1;
+		bottom: 72px;
 	}
 }
 .bar {
