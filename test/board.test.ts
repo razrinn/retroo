@@ -85,13 +85,17 @@ test("hidden text, phases, reactions and ownership", async () => {
 	assert.equal(b.s.phase, "revealed");
 	assert.equal(b.s.cards[0].text, "secret");
 
-	await b.send({ type: "react", id: well.id, emoji: "👍" });
 	await b.send({ type: "react", id: well.id, emoji: "🔥" });
-	await b.send({ type: "react", id: well.id, emoji: "🔥" }); // toggles off
+	await b.send({ type: "react", id: well.id, emoji: "👍" }); // replaces 🔥
 	await b.send({ type: "react", id: well.id, emoji: "🍕" }); // not in the set
-	await a.send({ type: "react", id: well.id, emoji: "👍" });
-	assert.deepEqual(b.s.cards[0].reactions, [{ emoji: "👍", count: 2, mine: true }]);
-	assert.equal(b.s.cards[0].total, 2, "every reaction counts once per person per emoji");
+	await a.send({ type: "react", id: well.id, emoji: "❤️" });
+	assert.deepEqual(b.s.cards[0].reactions, [
+		{ emoji: "👍", count: 1, mine: true },
+		{ emoji: "❤️", count: 1, mine: false },
+	]);
+	assert.equal(b.s.cards[0].total, 2, "one reaction per person per card");
+	await a.send({ type: "react", id: well.id, emoji: "❤️" }); // same emoji again removes it
+	assert.equal(a.s.cards[0].total, 1);
 
 	await a.send({ type: "delete", id: well.id });
 	assert.equal(a.s.cards.length, 3, "no deleting after reveal");

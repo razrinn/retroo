@@ -204,8 +204,12 @@ export class Board extends DurableObject<Env> {
 				break;
 			case "react": {
 				if (phase !== "revealed" || !REACTIONS.includes(String(msg.emoji))) return;
-				const removed = this.sql.exec("DELETE FROM reactions WHERE card = ? AND person = ? AND emoji = ?", msg.id, client, msg.emoji).rowsWritten;
-				if (!removed) this.sql.exec("INSERT INTO reactions (card, person, emoji) SELECT id, ?, ? FROM cards WHERE id = ?", client, msg.emoji, msg.id);
+				// One reaction per person per card: same emoji again removes it, a different one replaces it.
+				const same = this.sql.exec("DELETE FROM reactions WHERE card = ? AND person = ? AND emoji = ?", msg.id, client, msg.emoji).rowsWritten;
+				if (!same) {
+					this.sql.exec("DELETE FROM reactions WHERE card = ? AND person = ?", msg.id, client);
+					this.sql.exec("INSERT INTO reactions (card, person, emoji) SELECT id, ?, ? FROM cards WHERE id = ?", client, msg.emoji, msg.id);
+				}
 				break;
 			}
 			case "comment": {
