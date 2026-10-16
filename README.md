@@ -65,7 +65,7 @@ Local data lives in `.cloudflare/state/`. Delete that folder to start fresh.
    echo "CREATE_PASSWORD=your-long-random-password" > .env.secrets
    ```
 
-4. **Deploy.** This builds the app, uploads the Worker with the password, creates the Durable Object class and attaches the domain. It should also create the D1 database; if it reports a missing database instead, create one in the Cloudflare dashboard and put its id in `cloudflare.config.ts` as `bindings.d1({ id: "..." })`.
+4. **Deploy.** This builds the app, uploads the Worker with the password, creates the D1 database and the Durable Object class, and attaches the domain. No ids to copy into the config.
 
    ```sh
    pnpm run deploy --secrets-file .env.secrets
