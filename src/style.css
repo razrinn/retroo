@@ -1,6 +1,13 @@
+/* Boards tint the page toward the mood (Board.vue sets --mood). Registered so it can fade. */
+@property --mood {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: #f6f3ec;
+}
 :root {
-	--bg: #f6f3ec;
-	--dot: #e2ddd0;
+	--bg: color-mix(in srgb, #f6f3ec 90%, var(--mood));
+	--dot: color-mix(in srgb, #e2ddd0 78%, var(--mood));
+	transition: --mood 1.5s ease;
 	--surface: #fffdf8;
 	--text: #2a2723;
 	--muted: #77716a;

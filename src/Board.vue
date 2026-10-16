@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import { computed, onUnmounted, ref, watchEffect } from "vue";
 import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
 import Mascot from "./Mascot.vue";
@@ -143,6 +143,20 @@ async function copyCode() {
 const cardsIn = (col: string) => state.value?.cards.filter((c) => c.col === col) ?? [];
 const needsMood = computed(() => state.value && state.value.mood.mine === null && state.value.phase !== "locked");
 const moodMax = computed(() => Math.max(1, ...(state.value?.mood.counts ?? [])));
+// The page tints toward the mood: your own rating while writing (team results are still hidden),
+// the team average once revealed. Averages blend between neighbours, so 3.6 sits between grey and mint.
+const MOOD_TINTS = ["#d85a30", "#ef9f27", "#888780", "#1d9e75", "#7f77dd"];
+const mix = (a: string, b: string, t: number) =>
+	"#" + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, "0")).join("");
+watchEffect(() => {
+	const m = state.value?.mood;
+	const level = m ? (state.value!.phase === "writing" ? m.mine : (m.average ?? m.mine)) : null;
+	if (level === null) return document.documentElement.style.removeProperty("--mood");
+	const i = Math.min(3, Math.floor(level - 1));
+	document.documentElement.style.setProperty("--mood", mix(MOOD_TINTS[i], MOOD_TINTS[i + 1], level - 1 - i));
+});
+onUnmounted(() => document.documentElement.style.removeProperty("--mood"));
+
 // Change from last sprint's average, e.g. -2 or +0.4; null when there's nothing to compare.
 const moodDelta = computed(() => {
 	const m = state.value?.mood;
