@@ -51,6 +51,7 @@ function onState(next: BoardState) {
 			const wasHidden = prev.cards.filter((c) => c.text === null).map((c) => c.id);
 			flipping.value = new Map(wasHidden.map((id, i) => [id, i]));
 			setTimeout(() => (flipping.value = new Map()), 600 + wasHidden.length * 90);
+			washTo(moodColor(next));
 		}
 		const open = (s: BoardState) => s.followUps.filter((f) => f.status === "open").length;
 		if (open(prev) > 0 && open(next) === 0) confetti();
@@ -148,13 +149,30 @@ const moodMax = computed(() => Math.max(1, ...(state.value?.mood.counts ?? [])))
 const MOOD_TINTS = ["#d85a30", "#ef9f27", "#888780", "#1d9e75", "#7f77dd"];
 const mix = (a: string, b: string, t: number) =>
 	"#" + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, "0")).join("");
-watchEffect(() => {
-	const m = state.value?.mood;
-	const level = m ? (state.value!.phase === "writing" ? m.mine : (m.average ?? m.mine)) : null;
-	if (level === null) return document.documentElement.style.removeProperty("--mood");
+function moodColor(s: BoardState) {
+	const level = s.phase === "writing" ? s.mood.mine : (s.mood.average ?? s.mood.mine);
+	if (level === null) return null;
 	const i = Math.min(3, Math.floor(level - 1));
-	document.documentElement.style.setProperty("--mood", mix(MOOD_TINTS[i], MOOD_TINTS[i + 1], level - 1 - i));
+	return mix(MOOD_TINTS[i], MOOD_TINTS[i + 1], level - 1 - i);
+}
+watchEffect(() => {
+	const color = state.value && moodColor(state.value);
+	if (color) document.documentElement.style.setProperty("--mood", color);
+	else document.documentElement.style.removeProperty("--mood");
 });
+
+// On reveal the team color spreads out from the middle instead of fading in place. The page underneath
+// holds its old color until the wash has covered it (see :root.washing in style.css).
+const washColor = ref<string | null>(null);
+function washTo(color: string | null) {
+	if (!color) return;
+	washColor.value = color;
+	document.documentElement.classList.add("washing");
+	setTimeout(() => {
+		washColor.value = null;
+		document.documentElement.classList.remove("washing");
+	}, 1600);
+}
 onUnmounted(() => document.documentElement.style.removeProperty("--mood"));
 
 // Change from last sprint's average, e.g. -2 or +0.4; null when there's nothing to compare.
@@ -321,6 +339,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 		</p>
 	</main>
 
+	<div v-if="washColor" class="wash" :style="{ '--mood': washColor }" aria-hidden="true" />
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>

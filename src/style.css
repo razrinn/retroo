@@ -135,6 +135,34 @@ button.small {
 	overflow: hidden;
 	clip: rect(0 0 0 0);
 }
+/* Reveal wash (Board.vue): the new mood color grows from the middle at a stronger tint, the page
+   switches to it once covered, then the wash fades so the calm 10% tint is what stays. */
+:root.washing {
+	transition: --mood 0s 0.9s;
+}
+.wash {
+	--bg: color-mix(in srgb, #f6f3ec 70%, var(--mood));
+	--dot: color-mix(in srgb, #e2ddd0 60%, var(--mood));
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background: var(--bg) radial-gradient(var(--dot) 1.2px, transparent 1.2px) 0 0 / 22px 22px;
+	animation: wash 1.5s cubic-bezier(0.3, 0.7, 0.4, 1) forwards;
+}
+@keyframes wash {
+	from {
+		clip-path: circle(0% at 50% 40%);
+	}
+	60% {
+		clip-path: circle(150% at 50% 40%);
+		opacity: 1;
+	}
+	to {
+		clip-path: circle(150% at 50% 40%);
+		opacity: 0;
+	}
+}
 .confetti {
 	position: fixed;
 	inset: 0;
