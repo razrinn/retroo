@@ -15,14 +15,13 @@ const json = (data: unknown, status = 200) => Response.json(data, { status });
 
 function newCode() {
 	const bytes = crypto.getRandomValues(new Uint8Array(8));
-	const chars = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
-	return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+	return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
 
-// "k7qm4xpt", "K7QM 4XPT" and "K7QM-4XPT" all mean the same board.
+// Codes are 8 plain characters; "k7qm-4xpt" and "K7QM 4XPT" mean the same board. The dash is only for display.
 function normalizeCode(raw: string) {
 	const c = raw.toUpperCase().replace(/[^0-9A-Z]/g, "");
-	return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : null;
+	return c.length === 8 ? c : null;
 }
 
 async function checkPassword(given: unknown, env: Env) {

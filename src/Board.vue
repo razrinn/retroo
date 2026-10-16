@@ -3,10 +3,10 @@ import { computed, onUnmounted, ref } from "vue";
 import NoteCard from "./NoteCard.vue";
 import Presenter from "./Presenter.vue";
 import Timer from "./Timer.vue";
-import { type BoardState, type Card, COLS, MOODS, confetti, hash, load, post, save } from "./lib";
+import { type BoardState, type Card, COLS, MOODS, confetti, formatCode, hash, load, post, save } from "./lib";
 
 const props = defineProps<{ code: string }>();
-document.title = `retro · ${props.code}`;
+document.title = `retro · ${formatCode(props.code)}`;
 
 let clientId = load("clientId");
 if (!clientId) save("clientId", (clientId = crypto.randomUUID()));
@@ -145,7 +145,7 @@ const phaseInfo = computed(
 	<div v-else-if="status === 'missing'" class="gate panel">
 		<p class="emoji" aria-hidden="true">🤷</p>
 		<h1>No board here</h1>
-		<p class="muted">Nothing matches <span class="mono">{{ code }}</span>. Check the code with whoever shared it.</p>
+		<p class="muted">Nothing matches <span class="mono">{{ formatCode(code) }}</span>. Check the code with whoever shared it.</p>
 		<a href="/">Back to home</a>
 	</div>
 
@@ -164,7 +164,7 @@ const phaseInfo = computed(
 		<header>
 			<a href="/" class="brand">retro</a>
 			<h1 v-if="state.title">{{ state.title }}</h1>
-			<button class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied ✓" : code }}</button>
+			<button class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied ✓" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseInfo.emoji }} {{ phaseInfo.label }} <span class="hint">· {{ phaseInfo.hint }}</span></span>
 			<span v-if="status !== 'open'" class="muted">Reconnecting…</span>
 			<span class="spacer" />

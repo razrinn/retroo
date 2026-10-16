@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { type ListedBoard, post } from "./lib";
+import { type ListedBoard, formatCode, post } from "./lib";
 
 const password = ref("");
 const boards = ref<ListedBoard[] | null>(null);
@@ -28,7 +28,7 @@ async function show() {
 		<ul v-if="boards">
 			<li v-for="(b, i) in boards" :key="b.code" :style="{ rotate: `${(i % 3) - 1}deg` }">
 				<a :href="`/b/${b.code}`">{{ b.title || "Untitled" }}</a>
-				<span class="mono muted">{{ b.code }}</span>
+				<span class="mono muted">{{ formatCode(b.code) }}</span>
 				<span class="muted">{{ new Date(b.created_at).toLocaleDateString() }}</span>
 			</li>
 		</ul>

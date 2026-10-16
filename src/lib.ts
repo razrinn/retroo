@@ -48,11 +48,14 @@ export const save = (key: string, value: string) => {
 	} catch {}
 };
 
-// "k7qm4xpt", "K7QM 4XPT" and "K7QM-4XPT" all mean the same board (same rule as the Worker).
+// Codes are 8 plain characters (same rule as the Worker); the dash is only for display.
+const codeChars = (raw: string) => raw.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 9);
 export const normalizeCode = (raw: string) => {
-	const c = raw.toUpperCase().replace(/[^0-9A-Z]/g, "");
-	return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : "";
+	const c = codeChars(raw);
+	return c.length === 8 ? c : "";
 };
+// "K7QM4XPT" -> "K7QM-4XPT"; also formats partial input while typing ("K7QM4" -> "K7QM-4").
+export const formatCode = (raw: string) => codeChars(raw).slice(0, 8).replace(/^(.{4})(?=.)/, "$1-");
 
 export async function post<T>(url: string, body: object): Promise<T> {
 	const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

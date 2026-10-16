@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { type ListedBoard, normalizeCode, post } from "./lib";
+import { type ListedBoard, formatCode, normalizeCode, post } from "./lib";
 
 const joinCode = ref("");
 const title = ref("");
@@ -49,7 +49,16 @@ async function create() {
 		<form class="panel join" @submit.prevent="join">
 			<label for="code">Got a code?</label>
 			<div class="row">
-				<input id="code" v-model="joinCode" class="mono big" placeholder="K7QM-4XPT" autocomplete="off" />
+				<input
+					id="code"
+					:value="joinCode"
+					class="mono big"
+					placeholder="K7QM-4XPT"
+					autocomplete="off"
+					autocapitalize="characters"
+					spellcheck="false"
+					@input="joinCode = formatCode(($event.target as HTMLInputElement).value); ($event.target as HTMLInputElement).value = joinCode"
+				/>
 				<button class="primary">Join</button>
 			</div>
 		</form>
@@ -62,7 +71,7 @@ async function create() {
 				<label for="previous" class="small-label">Bring open action items from</label>
 				<select id="previous" v-model="previous">
 					<option value="">Nothing, fresh start</option>
-					<option v-for="b in boards" :key="b.code" :value="b.code">{{ b.title || "Untitled" }} · {{ b.code }}</option>
+					<option v-for="b in boards" :key="b.code" :value="b.code">{{ b.title || "Untitled" }} · {{ formatCode(b.code) }}</option>
 				</select>
 			</template>
 			<button>Create board</button>
