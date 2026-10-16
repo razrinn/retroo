@@ -12,7 +12,9 @@ const MAX_STROKES = 2000;
 const MAX_POINTS = 500;
 
 type Phase = "writing" | "revealed" | "locked";
-type FollowUp = { text: string; carried: number };
+// `source` is the id of the card or follow-up it came from on the previous board, so re-pulling never duplicates.
+type FollowUp = { source: string; text: string; carried: number };
+type CarryOver = { title: string; mood: number | null; items: FollowUp[] };
 type Stroke = { c: string; w: number; p: [number, number][] };
 type Msg = { type: string; stroke?: Stroke; id?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
 
@@ -61,7 +63,7 @@ export default {
 			await env.DB.prepare("INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)")
 				.bind(code, title, Date.now())
 				.run();
-			await boardStub(env, code).init(title, carried);
+			await boardStub(env, code).init(title, carried, previous);
 			return json({ code });
 		}
 
@@ -121,6 +123,10 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS strokes (id TEXT PRIMARY KEY, author TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
 		`);
+		// Boards created before follow-ups tracked their source get the column added in place.
+		const cols = this.sql.exec<{ name: string }>("PRAGMA table_info(followups)").toArray().map((c) => c.name);
+		if (!cols.includes("source")) this.sql.exec("ALTER TABLE followups ADD COLUMN source TEXT");
+		this.sql.exec("CREATE UNIQUE INDEX IF NOT EXISTS followups_source ON followups (source)");
 	}
 
 	meta(key: string) {
@@ -135,13 +141,42 @@ export class Board extends DurableObject<Env> {
 		return this.meta("phase") as Phase | undefined;
 	}
 
-	init(title: string, previous: { title: string; mood: number | null; items: FollowUp[] } | null) {
+	init(title: string, previous: CarryOver | null, previousCode: string | null) {
 		this.setMeta("title", title);
 		this.setMeta("phase", "writing");
-		if (!previous) return;
+		if (!previous || !previousCode) return;
+		this.setMeta("previous_code", previousCode);
 		this.setMeta("previous_title", previous.title);
 		if (previous.mood !== null) this.setMeta("previous_mood", String(previous.mood));
-		for (const f of previous.items) this.sql.exec("INSERT INTO followups (id, text, carried) VALUES (?, ?, ?)", crypto.randomUUID(), f.text, f.carried);
+		this.mergeFollowUps(previous.items);
+	}
+
+	// Adds items we don't have yet; for ones still open, picks up text edits. Never removes anything,
+	// and never touches items already marked done or dropped here.
+	mergeFollowUps(items: FollowUp[]) {
+		for (const f of items) {
+			this.sql.exec(
+				`INSERT INTO followups (id, source, text, carried) VALUES (?, ?, ?, ?)
+				ON CONFLICT(source) DO UPDATE SET text = excluded.text WHERE status = 'open'`,
+				crypto.randomUUID(),
+				f.source,
+				f.text,
+				f.carried,
+			);
+		}
+	}
+
+	// Action items added to the previous board after this one was created still arrive: re-pull whenever someone joins.
+	async pullFromPrevious() {
+		const previousCode = this.meta("previous_code");
+		if (!previousCode || this.phase === "locked") return;
+		try {
+			const carried = await boardStub(this.env, previousCode).carryOver();
+			if (carried) this.mergeFollowUps(carried.items);
+		} catch (err) {
+			// Joining must never fail because the previous board didn't answer; the next join tries again.
+			console.error("pull from previous board failed", previousCode, err);
+		}
 	}
 
 	moodAverage() {
@@ -150,13 +185,13 @@ export class Board extends DurableObject<Env> {
 	}
 
 	// What the next sprint's board inherits: follow-ups still open (not done or dropped), this board's action items, and its mood.
-	carryOver() {
+	carryOver(): CarryOver | null {
 		if (!this.phase) return null;
 		const items = this.sql
 			.exec<FollowUp>(
-				`SELECT text, carried FROM (
-					SELECT text, carried + 1 AS carried, 0 AS grp, rowid AS ord FROM followups WHERE status = 'open'
-					UNION ALL SELECT text, 1, 1, created_at FROM cards WHERE col = 'action'
+				`SELECT source, text, carried FROM (
+					SELECT id AS source, text, carried + 1 AS carried, 0 AS grp, rowid AS ord FROM followups WHERE status = 'open'
+					UNION ALL SELECT id, text, 1, 1, created_at FROM cards WHERE col = 'action'
 				) ORDER BY grp, ord`,
 			)
 			.toArray();
@@ -179,6 +214,7 @@ export class Board extends DurableObject<Env> {
 		const client = url.searchParams.get("client") ?? "";
 		if (!/^[\w-]{8,64}$/.test(client)) return new Response("Bad client id", { status: 400 });
 		this.setName(client, url.searchParams.get("name"));
+		await this.pullFromPrevious();
 
 		const { 0: browser, 1: server } = new WebSocketPair();
 		this.ctx.acceptWebSocket(server);

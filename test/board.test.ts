@@ -213,6 +213,40 @@ test("open action items and mood carry over to the next sprint", async () => {
 	fresh.close();
 });
 
+test("action items added to the old board after the new one exists still carry over", async () => {
+	const a = await create();
+	let c = await join(a, "alice-0009");
+	await c.send({ type: "add", col: "action", text: "early" });
+	c.close();
+
+	const b = await create(a);
+	c = await join(a, "alice-0009");
+	await c.send({ type: "add", col: "action", text: "late" });
+	const early = c.s.cards.find((x: any) => x.text === "early");
+	await c.send({ type: "edit", id: early.id, text: "early, reworded" });
+	c.close();
+
+	let d = await join(b, "bobby-0009");
+	const show = () => d.s.followUps.map((f: any) => [f.text, f.status]);
+	assert.deepEqual(show(), [["early, reworded", "open"], ["late", "open"]], "late item arrives, open item picks up the edit");
+
+	await d.send({ type: "followup", id: d.s.followUps[0].id, status: "done" });
+	d.close();
+	c = await join(a, "alice-0009");
+	await c.send({ type: "edit", id: early.id, text: "edited again" });
+	c.close();
+	d = await join(b, "bobby-0009");
+	assert.deepEqual(show(), [["early, reworded", "done"], ["late", "open"]], "items marked done here are left alone, nothing duplicates");
+	d.close();
+
+	// Chains keep working: the board after b gets b's still-open item once, even after several joins.
+	const next = await create(b);
+	for (let i = 0; i < 2; i++) (await join(next, "carol-0009")).close();
+	d = await join(next, "carol-0009");
+	assert.deepEqual(d.s.followUps.map((f: any) => [f.text, f.carried]), [["late", 2]]);
+	d.close();
+});
+
 test("emoji rain reaches everyone, only known emojis, with a spam limit", async () => {
 	const code = await create();
 	const a = await join(code, "alice-0007");
