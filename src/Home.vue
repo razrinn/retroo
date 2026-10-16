@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import Mascot from "./Mascot.vue";
 import { type ListedBoard, formatCode, normalizeCode, post } from "./lib";
 
 const joinCode = ref("");
@@ -39,9 +40,7 @@ async function create() {
 <template>
 	<main>
 		<div class="hero">
-			<span class="deco d1" aria-hidden="true" />
-			<span class="deco d2" aria-hidden="true" />
-			<span class="deco d3" aria-hidden="true" />
+			<Mascot :size="96" class="hero-mascot" />
 			<h1>retro</h1>
 			<p class="muted">Sprint retrospectives</p>
 		</div>
@@ -91,7 +90,7 @@ main {
 .hero {
 	position: relative;
 	text-align: center;
-	padding: 48px 0 28px;
+	padding: 32px 0 24px;
 }
 .hero h1 {
 	font-size: 56px;
@@ -100,39 +99,8 @@ main {
 .hero p {
 	margin: 4px 0 0;
 }
-.deco {
-	position: absolute;
-	font-size: 28px;
-	width: 52px;
-	height: 52px;
-	display: grid;
-	place-items: center;
-	border-radius: 6px;
-	box-shadow: var(--shadow);
+.hero-mascot {
 	animation: float 4s ease-in-out infinite;
-}
-.d1 {
-	left: 4%;
-	top: 30px;
-	background: var(--note-well);
-	rotate: -8deg;
-}
-.d2 {
-	right: 6%;
-	top: 22px;
-	background: var(--note-improve);
-	rotate: 7deg;
-	animation-delay: -1.3s;
-}
-.d3 {
-	left: 24%;
-	top: 4px;
-	background: var(--note-action);
-	rotate: -4deg;
-	animation-delay: -2.6s;
-	width: 40px;
-	height: 40px;
-	font-size: 20px;
 }
 @keyframes float {
 	50% {

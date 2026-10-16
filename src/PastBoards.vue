@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import Mascot from "./Mascot.vue";
 import { type ListedBoard, formatCode, post } from "./lib";
 
 const password = ref("");
@@ -18,7 +19,7 @@ async function show() {
 
 <template>
 	<main>
-		<h1><a href="/">retro</a> <span class="muted">/ Past boards</span></h1>
+		<h1><a href="/" class="brand"><Mascot :size="32" /> retro</a> <span class="muted">/ Past boards</span></h1>
 		<form v-if="!boards" class="panel row" @submit.prevent="show">
 			<input v-model="password" type="password" placeholder="Password" aria-label="Password" required />
 			<button class="primary">Show</button>
@@ -47,6 +48,12 @@ h1 {
 h1 a {
 	color: inherit;
 	text-decoration: none;
+}
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	vertical-align: middle;
 }
 ul {
 	list-style: none;

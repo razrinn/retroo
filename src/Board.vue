@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref } from "vue";
 import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
+import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
 import Presenter from "./Presenter.vue";
 import Timer from "./Timer.vue";
@@ -140,12 +141,14 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 
 <template>
 	<form v-if="!name" class="gate panel" @submit.prevent="setName">
+		<Mascot :size="64" class="gate-mascot" />
 		<h1>What's your name?</h1>
 		<input id="name" v-model="nameDraft" maxlength="40" placeholder="Your name" aria-label="Your name" required autofocus />
 		<button class="primary">Join board</button>
 	</form>
 
 	<div v-else-if="status === 'missing'" class="gate panel">
+		<Mascot :size="64" face="confused" class="gate-mascot" />
 		<h1>Board not found</h1>
 		<p class="muted">There's no board with code <span class="mono">{{ formatCode(code) }}</span>.</p>
 		<a href="/">Back to home</a>
@@ -154,6 +157,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 	<p v-else-if="!state" class="gate muted">Connecting…</p>
 
 	<div v-else-if="needsMood" class="gate panel">
+		<Mascot :size="64" class="gate-mascot" />
 		<h1>How was the sprint?</h1>
 		<p class="muted">Your rating is anonymous.</p>
 		<div class="faces" role="group" aria-label="Rate the sprint">
@@ -163,7 +167,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 
 	<main v-else>
 		<header>
-			<a href="/" class="brand">retro</a>
+			<a href="/" class="brand"><Mascot :size="28" /> retro</a>
 			<h1 v-if="state.title">{{ state.title }}</h1>
 			<button class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
@@ -335,7 +339,13 @@ header {
 	align-items: center;
 	margin-bottom: 16px;
 }
+.gate-mascot {
+	justify-self: center;
+}
 .brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	font-weight: 800;
 	font-size: 20px;
 	color: var(--text);
