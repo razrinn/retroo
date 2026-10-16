@@ -161,7 +161,9 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 		<h1>How was the sprint?</h1>
 		<p class="muted">Your rating is anonymous.</p>
 		<div class="faces" role="group" aria-label="Rate the sprint">
-			<button v-for="(m, i) in MOODS" :key="i" class="face" :aria-label="`${i + 1} of 5`" @click="send({ type: 'mood', value: i + 1 })">{{ m }}</button>
+			<button v-for="(_, i) in MOODS" :key="i" class="face" :aria-label="`${i + 1} of 5`" @click="send({ type: 'mood', value: i + 1 })">
+				<Mascot :mood="i + 1" :size="52" />
+			</button>
 		</div>
 	</div>
 
@@ -211,7 +213,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 						</span>
 					</div>
 					<div class="bars" role="group" aria-label="Your rating">
-						<div v-for="(m, i) in MOODS" :key="i" class="bar">
+						<div v-for="(_, i) in MOODS" :key="i" class="bar">
 							<template v-if="state.mood.counts">
 								<span class="track"><span class="fill" :style="{ height: `${(state.mood.counts[i] / moodMax) * 100}%` }" /></span>
 								<span class="n">{{ state.mood.counts[i] }}</span>
@@ -224,7 +226,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 								:disabled="state.phase === 'locked'"
 								@click="send({ type: 'mood', value: i + 1 })"
 							>
-								{{ m }}
+								<Mascot :mood="i + 1" :size="36" />
 							</button>
 						</div>
 					</div>
@@ -305,7 +307,8 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 	gap: 8px;
 }
 .face {
-	font-size: 34px;
+	display: grid;
+	place-items: center;
 	padding: 8px;
 	border-radius: 16px;
 	background: transparent;
@@ -317,12 +320,18 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 	background: var(--accent-soft);
 }
 .bars .face {
-	font-size: 34px;
 	width: 100%;
 	padding: 4px 0;
-	opacity: 0.45;
+	filter: grayscale(1);
+	opacity: 0.5;
+	transition: filter 0.15s, opacity 0.15s, scale 0.15s;
+}
+.bars .face:hover:not(:disabled) {
+	filter: none;
+	opacity: 1;
 }
 .bars .face.picked {
+	filter: none;
 	opacity: 1;
 	background: var(--accent-soft);
 	scale: 1.1;

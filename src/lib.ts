@@ -31,7 +31,8 @@ export const COLS = [
 	{ key: "improve", label: "To improve" },
 	{ key: "action", label: "Action items" },
 ];
-export const MOODS = ["😫", "😕", "😐", "🙂", "🤩"];
+// Mood levels 1-5, drawn as Stickie faces (Mascot.vue).
+export const MOODS = [1, 2, 3, 4, 5];
 export const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];
 
 // localStorage can throw (private mode, blocked storage); the app still works, it just forgets.
