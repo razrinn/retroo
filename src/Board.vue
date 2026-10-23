@@ -5,6 +5,7 @@ import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
 import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
+import Onboarding from "./Onboarding.vue";
 import Presenter from "./Presenter.vue";
 import Summary from "./Summary.vue";
 import Timer from "./Timer.vue";
@@ -273,9 +274,31 @@ function washTo(color: string | null) {
 }
 onUnmounted(() => document.documentElement.style.removeProperty("--mood"));
 
+// First-time tours: whoever just created the board gets "Running a retro" (from ?new), everyone else
+// gets "How retroo works" on their first board. Remembered per browser; the footer links replay them.
+const justCreated = new URLSearchParams(location.search).has("new");
+if (justCreated) history.replaceState(null, "", location.pathname);
+const tour = ref<"join" | "run" | null>(null);
+watch(
+	() => !!state.value && !needsMood.value,
+	(ready) => {
+		if (!ready || tour.value) return;
+		if (justCreated && !load("tour-run")) tour.value = "run";
+		else if (!load("tour-join")) tour.value = "join";
+	},
+	{ immediate: true },
+);
+function endTour(started: boolean) {
+	const seen = tour.value;
+	tour.value = null;
+	save(`tour-${seen}`, "1");
+	if (seen === "run") save("tour-join", "1"); // the facilitator doesn't need both on day one
+	if (started && seen === "join") document.querySelector<HTMLInputElement>(".add input")?.focus();
+}
+
 // "N" jumps to the first add-note field (unless you're already typing somewhere or a dialog is open).
 function onShortcut(e: KeyboardEvent) {
-	if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey || presenting.value || summarizing.value) return;
+	if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey || presenting.value || summarizing.value || tour.value) return;
 	const t = e.target as HTMLElement;
 	if (t.closest("input, textarea, select, [contenteditable]")) return;
 	const field = document.querySelector<HTMLInputElement>(".add input");
@@ -472,6 +495,10 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 			You're {{ name }} ·
 			<a href="#" @click.prevent="nameDraft = name; name = ''">change name</a>
 			·
+			<a href="#" @click.prevent="tour = 'join'">Tips</a>
+			·
+			<a href="#" @click.prevent="tour = 'run'">Facilitator tips</a>
+			·
 			<a :href="GITHUB_URL" target="_blank" rel="noopener">GitHub</a>
 		</p>
 	</main>
@@ -482,6 +509,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 		<div v-if="toast" :key="toast" class="toast" role="status" aria-live="polite">{{ toast }}</div>
 	</Transition>
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
+	<Onboarding v-if="tour && state" :tour="tour" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
 	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" @close="summarizing = false" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>

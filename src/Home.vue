@@ -39,7 +39,7 @@ async function create() {
 	creating.value = true;
 	try {
 		const { code } = await post<{ code: string }>("/api/boards", { title: title.value, password: password.value, previous: previous.value });
-		location.href = `/b/${code}`;
+		location.href = `/b/${code}?new`; // ?new shows the "Running a retro" tour once
 	} catch (e) {
 		error.value = (e as Error).message;
 		errorKey.value++;
