@@ -25,7 +25,6 @@ const delta = computed(() =>
 	mood.value.average !== null && mood.value.previous !== null ? Math.round((mood.value.average - mood.value.previous) * 10) / 10 : null,
 );
 const date = new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
-const who = (c: Card) => (props.state.anonymous ? "" : ` (${c.name})`);
 const reactionsText = (c: Card) => c.reactions.map((r) => `${r.emoji} ${r.count}`).join(" ");
 
 const markdown = computed(() => {
@@ -38,7 +37,7 @@ const markdown = computed(() => {
 	for (const col of columns.value) {
 		lines.push(`## ${col.label}`);
 		if (!col.cards.length) lines.push("_Nothing here._");
-		for (const c of col.cards) lines.push(`- ${c.text}${who(c)}${c.total ? `  ${reactionsText(c)}` : ""}`);
+		for (const c of col.cards) lines.push(`- ${c.text}${c.total ? `  ${reactionsText(c)}` : ""}`);
 		lines.push("");
 	}
 	lines.push("## Action items");
@@ -101,11 +100,11 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 					<ol>
 						<li v-for="c in col.cards" :key="c.id">
 							<span>{{ c.text }}</span>
-							<span class="meta">
-								<template v-if="!state.anonymous">{{ c.name }}</template>
-								<template v-if="c.total"> · {{ reactionsText(c) }}</template>
-								<template v-if="c.comments.length"> · {{ c.comments.length }} comment{{ c.comments.length > 1 ? "s" : "" }}</template>
-							</span>
+							<span class="meta">{{
+								[c.total ? reactionsText(c) : "", c.comments.length ? `${c.comments.length} comment${c.comments.length > 1 ? "s" : ""}` : ""]
+									.filter(Boolean)
+									.join(" · ")
+							}}</span>
 						</li>
 					</ol>
 				</section>

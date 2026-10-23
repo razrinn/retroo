@@ -14,7 +14,7 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 - **Action items carry over** to the next sprint until they're done.
 - **Summary** at the end, copyable as Markdown for Slack, Confluence or Notion.
 - **Mood trend** across sprints on Past boards.
-- **Anonymous boards** that hide names on cards and comments.
+- **Anonymous cards**: nobody sees who wrote what; comments and reactions show names.
 - **Presenter view**, **shared timer**, **doodle wall** and **emoji rain**.
 - **Join with a code**; one shared password to create boards.
 

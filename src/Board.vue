@@ -183,16 +183,10 @@ watchEffect(() => {
 	else document.documentElement.style.removeProperty("--mood");
 });
 
-// "Someone is writing": other people's typing signals keep their face-down cards and bubble breathing
-// for 4 seconds. Ours goes out at most every 2 seconds while typing a card.
+// "Someone is writing": other people's typing signals keep their bubble breathing for 4 seconds (cards are
+// anonymous, so it never points at a card). Ours goes out at most every 2 seconds while typing a card.
 const typingUntil = ref<Record<string, number>>({});
 const isTyping = (name: string) => (typingUntil.value[name] ?? 0) > clock.value;
-// Only each person's latest face-down card breathes, not all of them.
-const latestHidden = computed(() => {
-	const last: Record<string, string> = {};
-	for (const c of state.value?.cards ?? []) if (c.text === null) last[c.name] = c.id;
-	return last;
-});
 let lastTypingSent = 0;
 function typing() {
 	if (Date.now() - lastTypingSent < 2000) return;
@@ -291,7 +285,6 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 			<h1 v-if="state.title">{{ state.title }}</h1>
 			<button v-if="!demo" class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
-			<span v-if="state.anonymous" class="phase anon" title="Names are hidden on cards and comments">Anonymous</span>
 			<span v-if="status !== 'open'" class="muted">Reconnecting…</span>
 			<span class="spacer" />
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
@@ -404,7 +397,6 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 					:phase="state.phase"
 					:fresh="fresh.has(card.id)"
 					:flip-index="flipping.get(card.id) ?? null"
-					:typing="latestHidden[card.name] === card.id && isTyping(card.name)"
 					:floats="floats.filter((f) => f.card === card.id)"
 					@react="(emoji) => send({ type: 'react', id: card.id, emoji })"
 					@comment="(text) => send({ type: 'comment', id: card.id, text })"
@@ -547,12 +539,6 @@ header h1 {
 	border-radius: 50%;
 	background: currentColor;
 	vertical-align: 1px;
-}
-.phase.anon {
-	color: var(--accent);
-}
-.phase.anon::before {
-	display: none;
 }
 .phase.locked {
 	color: var(--muted);

@@ -7,7 +7,6 @@ const props = defineProps<{
 	phase: Phase;
 	fresh: boolean;
 	flipIndex: number | null;
-	typing?: boolean;
 	floats?: { id: number; emoji: string }[];
 }>();
 const emit = defineEmits<{ react: [emoji: string]; edit: [text: string]; remove: []; comment: [text: string]; uncomment: [id: string] }>();
@@ -55,14 +54,13 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 <template>
 	<article
 		class="note"
-		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null, raised: picking, typing }]"
+		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null, raised: picking }]"
 		:style="{ rotate: tilt, animationDelay: delay, '--rx': `${lean.x}deg`, '--ry': `${lean.y}deg` }"
 		@pointermove="onPointerMove"
 		@pointerleave="lean = { x: 0, y: 0 }"
 	>
 		<template v-if="card.text === null">
-			<span class="who">{{ card.name || "Someone" }}</span>
-			<span class="hidden-label">{{ typing ? "Writing…" : "Hidden" }}</span>
+			<span class="who">Hidden card</span>
 		</template>
 		<template v-else>
 			<span v-for="f in floats" :key="f.id" class="float" aria-hidden="true">+{{ f.emoji }}</span>
@@ -79,7 +77,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 			/>
 			<p v-else>{{ card.text }}</p>
 			<footer>
-				<span class="who">{{ card.name ? card.name + (card.mine ? " · you" : "") : card.mine ? "You" : "Anonymous" }}</span>
+				<span v-if="card.mine" class="who">You</span>
 				<span class="spacer" />
 				<template v-if="card.mine && phase !== 'locked'">
 					<button v-if="!editing" class="ghost small" @click="startEdit">Edit</button>
@@ -95,7 +93,8 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 						:class="{ mine: r.mine }"
 						:disabled="phase === 'locked'"
 						:aria-pressed="r.mine"
-						:aria-label="`${r.emoji} ${r.count}${r.mine ? ', including you' : ''}`"
+						:title="r.names.join(', ')"
+						:aria-label="`${r.emoji} ${r.count}: ${r.names.join(', ')}`"
 						@click="react(r.emoji)"
 					>
 						{{ r.emoji }} <span :key="r.count" class="count">{{ r.count }}</span>
@@ -120,7 +119,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 			</div>
 			<div v-if="threadOpen" class="thread">
 				<p v-for="m in card.comments" :key="m.id" class="comment">
-					<strong>{{ m.name || (m.mine ? "You" : "Anonymous") }}</strong> {{ m.text }}
+					<strong>{{ m.mine ? "You" : m.name }}</strong> {{ m.text }}
 					<button v-if="m.mine && phase !== 'locked'" class="ghost small" aria-label="Delete comment" @click="emit('uncomment', m.id)">✕</button>
 				</p>
 				<form v-if="canComment" @submit.prevent="send">
@@ -173,15 +172,6 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 	border: 1.5px dashed var(--border);
 	box-shadow: none;
 }
-.note.back.typing {
-	animation: breathe 1.4s ease-in-out infinite;
-}
-@keyframes breathe {
-	50% {
-		border-color: var(--tag);
-		scale: 1.015;
-	}
-}
 .float {
 	position: absolute;
 	right: 14px;
@@ -197,10 +187,6 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 		opacity: 0;
 		scale: 1.3;
 	}
-}
-.hidden-label {
-	margin-left: auto;
-	font-size: 12px;
 }
 p {
 	margin: 0 0 8px;

@@ -82,7 +82,6 @@ async function show() {
 				<Mascot v-if="b.mood !== null" :mood="Math.round(b.mood)" :size="24" />
 				<span v-else-if="trend.length" class="no-mood" aria-hidden="true" />
 				<a :href="`/b/${b.code}`">{{ b.title || "Untitled" }}</a>
-				<span v-if="b.anonymous" class="muted small">anonymous</span>
 				<span class="mono muted">{{ formatCode(b.code) }}</span>
 				<span class="muted">{{ new Date(b.created_at).toLocaleDateString() }}</span>
 			</li>

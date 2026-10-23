@@ -83,7 +83,6 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			previousTitle: data.previousTitle,
 			followUps: data.followUps,
 			phase: data.phase,
-			anonymous: false,
 			online: Object.values(data.people).sort(),
 			now: Date.now(),
 			timerEnd: data.timerEnd,
@@ -100,13 +99,13 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 				const hidden = writing && c.col !== "action" && !mine;
 				const reactions = REACTIONS.map((emoji) => {
 					const rows = data.reactions.filter((r) => r.card === c.id && r.emoji === emoji);
-					return { emoji, count: rows.length, mine: rows.some((r) => r.person === me) };
+					return { emoji, count: rows.length, mine: rows.some((r) => r.person === me), names: rows.map((r) => data.people[r.person] ?? "Anonymous") };
 				}).filter((r) => r.count > 0);
 				return {
 					id: c.id,
 					col: c.col,
 					text: hidden ? null : c.text,
-					name: data.people[c.author] ?? "Anonymous",
+					name: "", // cards are anonymous, like on real boards
 					mine,
 					reactions,
 					total: reactions.reduce((n, r) => n + r.count, 0),

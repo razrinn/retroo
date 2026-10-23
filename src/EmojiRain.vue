@@ -28,7 +28,7 @@ function holdCombo(c: Combo) {
 	}, COMBO_HOLD);
 }
 
-// People are told apart by `from` (an opaque tag from the server), so combos work on anonymous boards too.
+// People are told apart by `from` (an opaque tag from the server), so two people with the same name still count twice.
 function drop(emoji: string, name: string, from = name) {
 	const combo = combos.value.find((c) => c.emoji === emoji && !c.leaving);
 	if (combo) {

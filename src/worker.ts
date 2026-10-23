@@ -41,13 +41,12 @@ async function checkPassword(given: unknown, env: Env) {
 }
 
 // ponytail: schema created lazily on the two rare D1 paths (create, list); move to migrations if it keeps growing.
-// `mood` is the board's average once revealed (for the trend on Past boards); `anonymous` hides author names.
+// `mood` is the board's average once revealed (for the trend on Past boards).
 async function ensureIndex(env: Env) {
 	await env.DB.exec("CREATE TABLE IF NOT EXISTS boards (code TEXT PRIMARY KEY, title TEXT NOT NULL, created_at INTEGER NOT NULL)");
 	const { results } = await env.DB.prepare("PRAGMA table_info(boards)").all<{ name: string }>();
 	const cols = results.map((c) => c.name);
 	if (!cols.includes("mood")) await env.DB.exec("ALTER TABLE boards ADD COLUMN mood REAL");
-	if (!cols.includes("anonymous")) await env.DB.exec("ALTER TABLE boards ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 0");
 }
 
 // The binding names this Worker by string, so cf can't infer the class; tell TS which one it is.
@@ -59,18 +58,17 @@ export default {
 		const path = url.pathname;
 
 		if (req.method === "POST" && path === "/api/boards") {
-			const body = await req.json<{ password?: string; title?: string; previous?: string; anonymous?: boolean }>().catch(() => ({}) as never);
+			const body = await req.json<{ password?: string; title?: string; previous?: string }>().catch(() => ({}) as never);
 			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
 			const title = String(body.title ?? "").trim().slice(0, 100);
 			const previous = body.previous ? normalizeCode(String(body.previous)) : null;
 			const carried = previous ? await boardStub(env, previous).carryOver() : null;
 			const code = newCode();
 			await ensureIndex(env);
-			const anonymous = body.anonymous === true;
-			await env.DB.prepare("INSERT INTO boards (code, title, created_at, anonymous) VALUES (?, ?, ?, ?)")
-				.bind(code, title, Date.now(), anonymous ? 1 : 0)
+			await env.DB.prepare("INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)")
+				.bind(code, title, Date.now())
 				.run();
-			await boardStub(env, code).init(title, carried, previous, code, anonymous);
+			await boardStub(env, code).init(title, carried, previous, code);
 			return json({ code });
 		}
 
@@ -78,7 +76,7 @@ export default {
 			const body = await req.json<{ password?: string }>().catch(() => ({}) as never);
 			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
 			await ensureIndex(env);
-			const { results } = await env.DB.prepare("SELECT code, title, created_at, mood, anonymous FROM boards ORDER BY created_at DESC").all();
+			const { results } = await env.DB.prepare("SELECT code, title, created_at, mood FROM boards ORDER BY created_at DESC").all();
 			return json(results);
 		}
 
@@ -152,11 +150,10 @@ export class Board extends DurableObject<Env> {
 		return this.meta("phase") as Phase | undefined;
 	}
 
-	init(title: string, previous: CarryOver | null, previousCode: string | null, code: string, anonymous: boolean) {
+	init(title: string, previous: CarryOver | null, previousCode: string | null, code: string) {
 		this.setMeta("title", title);
 		this.setMeta("phase", "writing");
 		this.setMeta("code", code);
-		if (anonymous) this.setMeta("anonymous", "1");
 		if (!previous || !previousCode) return;
 		this.setMeta("previous_code", previousCode);
 		this.setMeta("previous_title", previous.title);
@@ -190,10 +187,6 @@ export class Board extends DurableObject<Env> {
 			// Joining must never fail because the previous board didn't answer; the next join tries again.
 			console.error("pull from previous board failed", previousCode, err);
 		}
-	}
-
-	get anonymous() {
-		return this.meta("anonymous") === "1";
 	}
 
 	// Keeps the board list's mood in step once results are public (never during writing, so it can't leak early).
@@ -338,7 +331,7 @@ export class Board extends DurableObject<Env> {
 				if (recent.length >= 6) return;
 				this.recentBursts.set(client, [...recent, now]);
 				// `from` is an opaque per-person tag so combos can count different people even when names are hidden.
-				const name = this.anonymous ? "" : (this.sql.exec<{ name: string }>("SELECT name FROM people WHERE id = ?", client).toArray()[0]?.name ?? "");
+				const name = this.sql.exec<{ name: string }>("SELECT name FROM people WHERE id = ?", client).toArray()[0]?.name ?? "";
 				const out = JSON.stringify({ burst: msg.emoji, name, from: tag(client) });
 				for (const s of this.ctx.getWebSockets()) if (s.readyState === WebSocket.OPEN) s.send(out);
 				return;
@@ -373,7 +366,7 @@ export class Board extends DurableObject<Env> {
 			case "typing": {
 				// "Someone is writing": relayed to everyone else, never stored, at most once per 2 seconds each.
 				const now = Date.now();
-				if (this.anonymous || now - (this.lastTyping.get(client) ?? 0) < 2000) return;
+				if (now - (this.lastTyping.get(client) ?? 0) < 2000) return;
 				this.lastTyping.set(client, now);
 				const name = this.sql.exec<{ name: string }>("SELECT name FROM people WHERE id = ?", client).toArray()[0]?.name ?? "";
 				this.toEach((c) => (c === client ? null : { typing: name }));
@@ -436,13 +429,14 @@ export class Board extends DurableObject<Env> {
 			)
 			.toArray();
 		// Counts per emoji in the fixed order, only the ones someone used.
+		const nameById = new Map(this.sql.exec<{ id: string; name: string }>("SELECT id, name FROM people").toArray().map((p) => [p.id, p.name]));
+		const nameOf = (id: string) => nameById.get(id) ?? "Anonymous";
 		const reactionsFor = (card: string, me: string) =>
 			REACTIONS.map((emoji) => {
 				const rows = reactions.filter((r) => r.card === card && r.emoji === emoji);
-				return { emoji, count: rows.length, mine: rows.some((r) => r.person === me) };
+				return { emoji, count: rows.length, mine: rows.some((r) => r.person === me), names: rows.map((r) => nameOf(r.person)) };
 			}).filter((r) => r.count > 0);
 
-		const anonymous = this.anonymous;
 		sockets.forEach((ws, i) => {
 			const me = clients[i];
 			ws.send(
@@ -451,7 +445,6 @@ export class Board extends DurableObject<Env> {
 					previousTitle,
 					followUps,
 					phase,
-					anonymous,
 					online,
 					now: Date.now(),
 					timerEnd,
@@ -471,15 +464,15 @@ export class Board extends DurableObject<Env> {
 						const cardReactions = reactionsFor(c.id, me);
 						return {
 							...c,
-							// Anonymous boards never send author names; "mine" still lets you edit your own cards.
-							name: anonymous ? "" : c.name,
+							// Cards are always anonymous: author names never leave the server, "mine" marks your own.
+							name: "",
 							text: hidden ? null : c.text,
 							mine,
 							reactions: cardReactions,
 							total: cardReactions.reduce((n, r) => n + r.count, 0),
 							comments: hidden
 								? []
-								: comments.filter((m) => m.card === c.id).map(({ card, author, ...m }) => ({ ...m, name: anonymous ? "" : m.name, mine: author === me })),
+								: comments.filter((m) => m.card === c.id).map(({ card, author, ...m }) => ({ ...m, mine: author === me })),
 						};
 					}),
 				}),

@@ -80,6 +80,7 @@ test("hidden text, phases, reactions and ownership", async () => {
 	await b.send({ type: "name", name: "bobby" }); // round-trip so b has a's broadcasts too
 	const [well, action] = b.s.cards;
 	assert.equal(well.text, null, "other people's cards are hidden while writing");
+	assert.equal(well.name, "", "and anonymous");
 	assert.equal(action.text, "public action", "action items are never hidden");
 	assert.ok(!JSON.stringify(b.s).includes("alice-0001"), "client ids never leak");
 
@@ -99,8 +100,8 @@ test("hidden text, phases, reactions and ownership", async () => {
 	await b.send({ type: "react", id: well.id, emoji: "🍕" }); // not in the set
 	await a.send({ type: "react", id: well.id, emoji: "❤️" });
 	assert.deepEqual(b.s.cards[0].reactions, [
-		{ emoji: "👍", count: 1, mine: true },
-		{ emoji: "❤️", count: 1, mine: false },
+		{ emoji: "👍", count: 1, mine: true, names: ["bobby"] },
+		{ emoji: "❤️", count: 1, mine: false, names: ["alice"] },
 	]);
 	assert.equal(b.s.cards[0].total, 2, "one reaction per person per card");
 	await a.send({ type: "react", id: well.id, emoji: "❤️" }); // same emoji again removes it
@@ -311,24 +312,21 @@ test("typing signal goes to everyone else, at most every 2 seconds", async () =>
 	b.close();
 });
 
-test("anonymous boards never send author names", async () => {
-	const code = await create("", { anonymous: true });
+test("cards are anonymous; comments and reactions show names", async () => {
+	const code = await create();
 	const a = await join(code, "alice-0011");
 	const b = await join(code, "bobby-0011");
 	await a.send({ type: "add", col: "action", text: "secret author" });
 	await b.send({ type: "comment", id: a.s.cards[0].id, text: "who wrote this?" });
-	await b.send({ type: "typing" });
-	await b.send({ type: "burst", emoji: "🎉" });
-	assert.equal(a.s.anonymous, true);
+	await a.send({ type: "reveal" });
+	await b.send({ type: "react", id: a.s.cards[0].id, emoji: "🔥" });
+	const card = b.s.cards[0];
+	assert.equal(card.name, "", "no author name on cards");
+	assert.equal(card.mine, false);
 	assert.equal(a.s.cards[0].mine, true, "you can still tell your own cards");
-	const json = JSON.stringify([a.s, a.events]);
-	assert.ok(!json.includes("alice") || a.s.online.includes("alice"), "names only appear in the online list");
-	assert.equal(b.s.cards[0].name, "");
-	assert.equal(b.s.cards[0].comments[0].name, "");
-	assert.ok(!a.events.some((e) => "typing" in e), "no typing signal on anonymous boards");
-	const burst = a.events.find((e) => e.burst);
-	assert.equal(burst.name, "");
-	assert.ok(burst.from && !burst.from.includes("bobby"), "bursts carry an opaque tag instead");
+	assert.equal(card.comments[0].name, "bobby");
+	assert.deepEqual(card.reactions[0].names, ["bobby"]);
+	assert.ok(!JSON.stringify(b.s.cards).includes("alice"), "the card author's name never reaches anyone");
 	a.close();
 	b.close();
 });

@@ -1,5 +1,5 @@
 export type Phase = "writing" | "revealed" | "locked";
-export type Reaction = { emoji: string; count: number; mine: boolean };
+export type Reaction = { emoji: string; count: number; mine: boolean; names: string[] };
 export type Comment = { id: string; name: string; text: string; mine: boolean };
 export type Card = {
 	id: string;
@@ -18,14 +18,13 @@ export type BoardState = {
 	previousTitle: string;
 	followUps: FollowUp[];
 	phase: Phase;
-	anonymous: boolean;
 	online: string[];
 	now: number;
 	timerEnd: number | null;
 	mood: Mood;
 	cards: Card[];
 };
-export type ListedBoard = { code: string; title: string; created_at: number; mood: number | null; anonymous: number };
+export type ListedBoard = { code: string; title: string; created_at: number; mood: number | null };
 
 export const COLS = [
 	{ key: "well", label: "Went well" },
