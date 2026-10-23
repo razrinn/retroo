@@ -30,7 +30,18 @@ function apply(data: { doodle?: Saved[]; stroke?: Saved; unstroke?: string }) {
 	if (data.unstroke && strokes.value) strokes.value = strokes.value.filter((s) => s.id !== data.unstroke);
 	redraw();
 }
-defineExpose({ apply });
+// A crisp picture of the wall for the summary image (null when nobody has drawn anything).
+function snapshot() {
+	if (!strokes.value?.length) return null;
+	const c = document.createElement("canvas");
+	c.width = 1280;
+	c.height = 800;
+	const ctx = c.getContext("2d")!;
+	ctx.lineCap = ctx.lineJoin = "round";
+	for (const s of strokes.value) line(ctx, s);
+	return c.toDataURL("image/png");
+}
+defineExpose({ apply, snapshot });
 
 function line(ctx: CanvasRenderingContext2D, s: Stroke) {
 	const { width: W, height: H } = ctx.canvas;

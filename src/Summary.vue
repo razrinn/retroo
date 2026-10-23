@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { domToBlob } from "modern-screenshot";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import Mascot from "./Mascot.vue";
+import ShareCard from "./ShareCard.vue";
 import { type BoardState, type Card, COLS, useFocusTrap } from "./lib";
 
 // One page that wraps up the retro, plus a Markdown copy for Slack, Confluence or Notion.
-const props = defineProps<{ state: BoardState; code: string }>();
+const props = defineProps<{ state: BoardState; code: string; doodle?: () => string | null }>();
 const emit = defineEmits<{ close: [] }>();
 
 const byReactions = (col: string) =>
@@ -52,6 +54,56 @@ const markdown = computed(() => {
 	return lines.join("\n") + "\n";
 });
 
+// Share image: render the off-screen ShareCard, snapshot it to a PNG in the browser, then copy, download or share.
+const rendering = ref<string | null | undefined>(undefined); // doodle snapshot while rendering; undefined = idle
+const cardEl = ref<HTMLElement>();
+const imageStatus = ref("");
+const fileName = computed(() => `${(props.state.title || "retro").replace(/[^\w-]+/g, "-").toLowerCase()}.png`);
+async function makeImage() {
+	rendering.value = props.doodle?.() ?? null;
+	await nextTick();
+	await document.fonts.ready;
+	try {
+		return await domToBlob(cardEl.value!, { scale: 2, type: "image/png" });
+	} finally {
+		rendering.value = undefined;
+	}
+}
+function flash(text: string) {
+	imageStatus.value = text;
+	setTimeout(() => imageStatus.value === text && (imageStatus.value = ""), 1800);
+}
+function download(blob: Blob) {
+	const a = document.createElement("a");
+	a.href = URL.createObjectURL(blob);
+	a.download = fileName.value;
+	a.click();
+	setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function copyImage() {
+	imageStatus.value = "Making image…";
+	try {
+		// The promise goes straight into ClipboardItem so Safari still counts it as part of the click.
+		await navigator.clipboard.write([new ClipboardItem({ "image/png": makeImage() })]);
+		flash("Image copied");
+	} catch {
+		download(await makeImage());
+		flash("Copying images isn't supported here, so it was downloaded");
+	}
+}
+async function downloadImage() {
+	imageStatus.value = "Making image…";
+	download(await makeImage());
+	flash("Downloaded");
+}
+const canShare = typeof navigator.canShare === "function" && navigator.canShare({ files: [new File([""], "x.png", { type: "image/png" })] });
+async function shareImage() {
+	imageStatus.value = "Making image…";
+	const file = new File([await makeImage()], fileName.value, { type: "image/png" });
+	imageStatus.value = "";
+	await navigator.share({ files: [file], title: props.state.title || "Retro" }).catch(() => {});
+}
+
 const copied = ref(false);
 async function copy() {
 	await navigator.clipboard?.writeText(markdown.value);
@@ -74,7 +126,13 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 					<p class="muted">{{ date }}</p>
 				</div>
 				<span class="spacer" />
-				<button class="primary" @click="copy">{{ copied ? "Copied" : "Copy as Markdown" }}</button>
+				<div class="exports">
+					<button class="primary" @click="copy">{{ copied ? "Copied" : "Copy as Markdown" }}</button>
+					<button @click="copyImage">Copy image</button>
+					<button class="ghost" @click="downloadImage">Download</button>
+					<button v-if="canShare" class="ghost" @click="shareImage">Share</button>
+					<span v-if="imageStatus" class="status muted" role="status">{{ imageStatus }}</span>
+				</div>
 				<button class="ghost" aria-label="Close summary" @click="emit('close')">✕</button>
 			</header>
 
@@ -134,6 +192,9 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 				</ul>
 			</section>
 		</article>
+		<div v-if="rendering !== undefined" class="offscreen" aria-hidden="true">
+			<div ref="cardEl"><ShareCard :state="state" :doodle="rendering" /></div>
+		</div>
 	</div>
 </template>
 
@@ -168,7 +229,26 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 header {
 	display: flex;
 	align-items: flex-start;
+	flex-wrap: wrap;
 	gap: 10px;
+}
+.exports {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+.status {
+	width: 100%;
+	text-align: right;
+	font-size: 12px;
+}
+/* The share card renders out of view while the PNG is made. */
+.offscreen {
+	position: fixed;
+	left: -10000px;
+	top: 0;
+	pointer-events: none;
 }
 h1 {
 	font-size: 26px;

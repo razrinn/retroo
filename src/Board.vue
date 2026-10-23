@@ -540,7 +540,7 @@ const phaseLabel = computed(() =>
 	</Transition>
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
 	<Onboarding v-if="tour && state" :tour="tour" :live="state.live" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
-	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" @close="summarizing = false" />
+	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" :doodle="() => doodle?.snapshot() ?? null" @close="summarizing = false" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>
 
