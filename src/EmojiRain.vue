@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { REACTIONS } from "./lib";
+import { REACTIONS, useDismiss } from "./lib";
 import { sounds } from "./sound";
 
 // Emoji rain: tap an emoji and it floats up on everyone's screen. Nothing is stored.
@@ -18,6 +18,8 @@ const drops = ref<Drop[]>([]);
 const combos = ref<Combo[]>([]);
 const recent = new Map<string, { from: string; name: string; at: number }[]>();
 const open = ref(false);
+const barEl = ref<HTMLElement>();
+useDismiss(open, barEl);
 let nextId = 0;
 
 function holdCombo(c: Combo) {
@@ -94,7 +96,7 @@ defineExpose({ drop });
 			</div>
 		</div>
 	</div>
-	<div class="bar">
+	<div ref="barEl" class="bar">
 		<template v-if="open">
 			<button v-for="e in REACTIONS" :key="e" class="ghost" :aria-label="`Send ${e} to everyone`" @click="emit('send', e)">{{ e }}</button>
 		</template>

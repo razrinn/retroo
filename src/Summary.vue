@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import Mascot from "./Mascot.vue";
-import { type BoardState, type Card, COLS } from "./lib";
+import { type BoardState, type Card, COLS, useFocusTrap } from "./lib";
 
 // One page that wraps up the retro, plus a Markdown copy for Slack, Confluence or Notion.
 const props = defineProps<{ state: BoardState; code: string }>();
@@ -58,13 +58,15 @@ async function copy() {
 	copied.value = true;
 	setTimeout(() => (copied.value = false), 1500);
 }
+const dialog = ref<HTMLElement>();
+useFocusTrap(dialog);
 const onKey = (e: KeyboardEvent) => e.key === "Escape" && emit("close");
 onMounted(() => addEventListener("keydown", onKey));
 onUnmounted(() => removeEventListener("keydown", onKey));
 </script>
 
 <template>
-	<div class="summary" role="dialog" aria-modal="true" aria-label="Retro summary">
+	<div ref="dialog" class="summary" role="dialog" aria-modal="true" aria-label="Retro summary">
 		<article class="sheet">
 			<header>
 				<div>

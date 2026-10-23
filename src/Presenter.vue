@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { COLS, type Card } from "./lib";
+import { COLS, type Card, useFocusTrap } from "./lib";
 
 // Only the presenter's screen changes; everyone else keeps the normal board and follows the screen share.
 const props = defineProps<{ cards: Card[] }>();
@@ -54,6 +54,8 @@ const position = computed(() => {
 const actions = computed(() => props.cards.filter((c) => c.col === "action"));
 const colLabel = (key: string) => COLS.find((c) => c.key === key)!;
 const draft = ref("");
+const dialog = ref<HTMLElement>();
+useFocusTrap(dialog);
 
 function go(step: number) {
 	const next = items.value[Math.max(0, Math.min(items.value.length - 1, index.value + step))];
@@ -75,7 +77,7 @@ function add() {
 </script>
 
 <template>
-	<div class="presenter" role="dialog" aria-modal="true" aria-label="Presenter view">
+	<div ref="dialog" class="presenter" role="dialog" aria-modal="true" aria-label="Presenter view">
 		<header>
 			<strong>Presenting</strong>
 			<span class="muted">Arrow keys to move, Esc to exit</span>

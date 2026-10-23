@@ -9,10 +9,15 @@ const password = ref("");
 const previous = ref("");
 const boards = ref<ListedBoard[] | null>(null);
 const error = ref("");
+const errorKey = ref(0);
 
 function join() {
 	const c = normalizeCode(joinCode.value);
-	if (!c) return (error.value = "Codes have 8 characters, like K7QM-4XPT.");
+	if (!c) {
+		error.value = "Codes have 8 characters, like K7QM-4XPT.";
+		errorKey.value++;
+		return;
+	}
 	location.href = `/b/${c}`;
 }
 
@@ -26,13 +31,19 @@ async function loadBoards() {
 	}
 }
 
+// Busy until we navigate away, so a double-click can't create two boards.
+const creating = ref(false);
 async function create() {
+	if (creating.value) return;
 	error.value = "";
+	creating.value = true;
 	try {
 		const { code } = await post<{ code: string }>("/api/boards", { title: title.value, password: password.value, previous: previous.value });
 		location.href = `/b/${code}`;
 	} catch (e) {
 		error.value = (e as Error).message;
+		errorKey.value++;
+		creating.value = false;
 	}
 }
 </script>
@@ -75,10 +86,10 @@ async function create() {
 					<option v-for="b in boards" :key="b.code" :value="b.code">{{ b.title || "Untitled" }} · {{ formatCode(b.code) }}</option>
 				</select>
 			</template>
-			<button>Create board</button>
+			<button :aria-busy="creating">{{ creating ? "Creating…" : "Create board" }}</button>
 		</form>
 
-		<p v-if="error" class="error" role="alert">{{ error }}</p>
+		<p v-if="error" :key="errorKey" class="error" role="alert">{{ error }}</p>
 		<p class="foot">
 			<a href="/boards">Past boards</a>
 			<span class="muted">·</span>

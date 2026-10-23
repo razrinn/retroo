@@ -29,12 +29,19 @@ const average = computed(() => {
 const gridY = (m: number) => PAD.top + ((5 - m) / 4) * (H - PAD.top - PAD.bottom);
 const short = (s: string) => (s.length > 12 ? s.slice(0, 11) + "…" : s);
 
+const loading = ref(false);
+const errorKey = ref(0);
 async function show() {
+	if (loading.value) return;
 	error.value = "";
+	loading.value = true;
 	try {
 		boards.value = await post<ListedBoard[]>("/api/boards/list", { password: password.value });
 	} catch (e) {
 		error.value = (e as Error).message;
+		errorKey.value++;
+	} finally {
+		loading.value = false;
 	}
 }
 </script>
@@ -44,9 +51,9 @@ async function show() {
 		<h1><a href="/" class="brand"><Mascot :size="32" /> retroo</a> <span class="muted">/ Past boards</span></h1>
 		<form v-if="!boards" class="panel row" @submit.prevent="show">
 			<input v-model="password" type="password" placeholder="Password" aria-label="Password" required />
-			<button class="primary">Show</button>
+			<button class="primary" :aria-busy="loading">Show</button>
 		</form>
-		<p v-if="error" class="error" role="alert">{{ error }}</p>
+		<p v-if="error" :key="errorKey" class="error" role="alert">{{ error }}</p>
 		<p v-if="boards && !boards.length" class="muted">No boards yet.</p>
 
 		<section v-if="trend.length >= 2" class="panel trend" aria-label="Team mood over time">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
-import { type Card, type Phase, REACTIONS, hash, reducedMotion } from "./lib";
+import ConfirmButton from "./ConfirmButton.vue";
+import { type Card, type Phase, REACTIONS, hash, reducedMotion, useDismiss } from "./lib";
 
 const props = defineProps<{
 	card: Card;
@@ -12,6 +13,8 @@ const props = defineProps<{
 const emit = defineEmits<{ react: [emoji: string]; edit: [text: string]; remove: []; comment: [text: string]; uncomment: [id: string] }>();
 
 const picking = ref(false);
+const pickerEl = ref<HTMLElement>();
+useDismiss(picking, pickerEl);
 const threadOpen = ref(false);
 const reply = ref("");
 // Same rule as the server: any card once revealed, action items (never hidden) any time.
@@ -81,7 +84,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 				<span class="spacer" />
 				<template v-if="card.mine && phase !== 'locked'">
 					<button v-if="!editing" class="ghost small" @click="startEdit">Edit</button>
-					<button v-if="phase === 'writing'" class="ghost small" @click="$emit('remove')">Delete</button>
+					<ConfirmButton v-if="phase === 'writing'" ask="Delete?" yes="Delete" danger class="ghost small" @confirm="emit('remove')">Delete</ConfirmButton>
 				</template>
 			</footer>
 			<div v-if="phase !== 'writing' || card.comments.length || canComment" class="social">
@@ -99,7 +102,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 					>
 						{{ r.emoji }} <span :key="r.count" class="count">{{ r.count }}</span>
 					</button>
-					<span v-if="phase !== 'locked'" class="picker">
+					<span v-if="phase !== 'locked'" ref="pickerEl" class="picker">
 						<button class="chip add" :aria-expanded="picking" aria-label="Add reaction" @click="picking = !picking">＋🙂</button>
 						<span v-if="picking" class="menu" role="menu">
 							<button v-for="e in REACTIONS" :key="e" class="ghost" role="menuitem" @click="react(e)">{{ e }}</button>
@@ -118,6 +121,9 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 				</button>
 			</div>
 			<div v-if="threadOpen" class="thread">
+				<p v-if="card.reactions.length" class="who-reacted">
+					<span v-for="r in card.reactions" :key="r.emoji">{{ r.emoji }} {{ r.names.join(", ") }}</span>
+				</p>
 				<p v-for="m in card.comments" :key="m.id" class="comment">
 					<strong>{{ m.mine ? "You" : m.name }}</strong> {{ m.text }}
 					<button v-if="m.mine && phase !== 'locked'" class="ghost small" aria-label="Delete comment" @click="emit('uncomment', m.id)">✕</button>
@@ -276,6 +282,14 @@ textarea {
 	padding-top: 8px;
 	border-top: 1.5px dashed color-mix(in srgb, var(--tag) 30%, transparent);
 	font-size: 14px;
+}
+.who-reacted {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	margin: 0 0 8px;
+	font-size: 13px;
+	opacity: 0.85;
 }
 .comment {
 	margin: 0 0 6px;

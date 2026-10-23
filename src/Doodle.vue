@@ -8,6 +8,9 @@ type Saved = Stroke & { id: string; mine: boolean };
 const props = defineProps<{ locked: boolean }>();
 const emit = defineEmits<{ send: [msg: object] }>();
 
+// On phones the wall starts folded so the cards stay near the top; tap the title to open it.
+const folded = ref(matchMedia("(max-width: 760px)").matches);
+
 const COLORS = ["#2a2723", "#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#7f77dd"];
 const color = ref(COLORS[0]);
 const width = ref(3);
@@ -94,8 +97,10 @@ onUnmounted(() => observer.disconnect());
 <template>
 	<section class="panel doodle" aria-label="Doodle wall">
 		<header>
-			<h2>Doodle</h2>
-			<template v-if="!locked">
+			<h2>
+				<button class="fold" :aria-expanded="!folded" @click="folded = !folded">Doodle <span aria-hidden="true">{{ folded ? "›" : "⌄" }}</span></button>
+			</h2>
+			<template v-if="!locked && !folded">
 				<div class="row swatches" role="group" aria-label="Color">
 					<button
 						v-for="c in COLORS"
@@ -113,9 +118,9 @@ onUnmounted(() => observer.disconnect());
 				</button>
 				<button class="ghost small" aria-label="Undo your last stroke" @click="emit('send', { type: 'undo' })">Undo</button>
 			</template>
-			<span v-else class="muted small-text">View only</span>
+			<span v-else-if="locked" class="muted small-text">View only</span>
 		</header>
-		<div class="stage">
+		<div v-show="!folded" class="stage">
 			<canvas ref="canvas" :class="{ locked }" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" />
 			<p v-if="strokes === null" class="hint muted">Loading…</p>
 			<p v-else-if="!strokes.length && !locked" class="hint muted">Shared with everyone on this board</p>
@@ -134,6 +139,17 @@ header {
 h2 {
 	font-size: 15px;
 	margin-right: auto;
+}
+.fold {
+	all: unset;
+	cursor: pointer;
+	font: inherit;
+	font-weight: 700;
+}
+.fold:focus-visible {
+	outline: 2.5px solid var(--accent);
+	outline-offset: 2px;
+	border-radius: 4px;
 }
 .swatches {
 	gap: 4px;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
+import { useDismiss } from "./lib";
 
 // `offset` is server time minus this browser's time, so everyone's countdown agrees even with skewed clocks.
 const props = defineProps<{ end: number | null; offset: number }>();
@@ -10,6 +11,8 @@ const tick = setInterval(() => (now.value = Date.now()), 250);
 onUnmounted(() => clearInterval(tick));
 
 const open = ref(false);
+const root = ref<HTMLElement>();
+useDismiss(open, root);
 const remaining = computed(() => (props.end ? Math.max(0, props.end - (now.value + props.offset)) : null));
 const label = computed(() => {
 	const s = Math.ceil((remaining.value ?? 0) / 1000);
@@ -28,7 +31,7 @@ function start(seconds: number) {
 </script>
 
 <template>
-	<div class="timer">
+	<div ref="root" class="timer">
 		<template v-if="remaining === null">
 			<button class="ghost" :aria-expanded="open" @click="open = !open">Timer</button>
 			<div v-if="open" class="menu">

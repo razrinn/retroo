@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect } from "vue";
+import ConfirmButton from "./ConfirmButton.vue";
 import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
 import Mascot from "./Mascot.vue";
@@ -20,7 +21,8 @@ if (!clientId) save("clientId", (clientId = crypto.randomUUID()));
 const name = ref(load("name"));
 const nameDraft = ref(name.value);
 const state = ref<BoardState | null>(null);
-const status = ref<"connecting" | "open" | "missing">("connecting");
+// connecting: first try · open · retrying: lost the connection, trying again · missing: no such board
+const status = ref<"connecting" | "open" | "retrying" | "missing">("connecting");
 const drafts = ref<Record<string, string>>({});
 const error = ref("");
 const showLock = ref(false);
@@ -61,6 +63,10 @@ function onState(next: BoardState) {
 			hops.value++;
 			sounds.reveal(wasHidden.length);
 		}
+		// Everyone hears about phase changes, including screen-reader users (the toast is a live region).
+		if (prev.phase === "writing" && next.phase === "revealed") notify(`${next.cards.length} card${next.cards.length === 1 ? "" : "s"} revealed`);
+		if (prev.phase !== "locked" && next.phase === "locked") notify("Board locked. The summary is ready.");
+		if (prev.phase === "locked" && next.phase !== "locked") notify("Board unlocked");
 		const before = new Map(prev.cards.map((c) => [c.id, c]));
 		const gained: { card: string; emoji: string }[] = [];
 		for (const c of next.cards) {
@@ -85,8 +91,20 @@ function onState(next: BoardState) {
 	state.value = next;
 }
 
+// One short message at a time near the bottom; also read out by screen readers (role="status").
+const toast = ref("");
+let toastTimer = 0;
+function notify(message: string) {
+	toast.value = message;
+	clearTimeout(toastTimer);
+	toastTimer = setTimeout(() => (toast.value = ""), 2600);
+}
+
+let retries = 0;
 function onOpen() {
+	if (status.value === "retrying") notify("Back online");
 	everOpened = true;
+	retries = 0;
 	status.value = "open";
 }
 function onMessage(data: any) {
@@ -108,12 +126,15 @@ function connect() {
 	ws = socket;
 	socket.onopen = onOpen;
 	socket.onmessage = (e) => onMessage(JSON.parse(e.data));
-	socket.onclose = () => {
+	socket.onclose = async () => {
 		if (stopped) return;
-		// A board that never opened is almost always a wrong code; otherwise it's a dropped connection.
-		if (!everOpened) return (status.value = "missing");
-		status.value = "connecting";
-		setTimeout(connect, 1000);
+		// Only call a board missing when the server says so (404); anything else is the network, so retry.
+		if (!everOpened) {
+			const res = await fetch(`/api/boards/${props.code}/ws`).catch(() => null);
+			if (res?.status === 404) return (status.value = "missing");
+		}
+		status.value = everOpened ? "retrying" : "connecting";
+		setTimeout(connect, Math.min(10_000, 1000 * 2 ** retries++));
 	};
 }
 onUnmounted(() => {
@@ -122,7 +143,12 @@ onUnmounted(() => {
 });
 if (name.value) connect();
 
-const send = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
+// Returns false when not connected, so callers can keep what the person typed.
+function send(msg: object) {
+	if (ws?.readyState !== WebSocket.OPEN) return false;
+	ws.send(JSON.stringify(msg));
+	return true;
+}
 
 function setName() {
 	const n = nameDraft.value.trim().slice(0, 40);
@@ -134,31 +160,35 @@ function setName() {
 	else send({ type: "name", name: n });
 }
 
+// The text only clears once it's actually sent; the field then flashes a check so you can keep going.
+const saved = ref("");
 function add(col: string) {
 	const text = drafts.value[col]?.trim();
 	if (!text) return;
-	send({ type: "add", col, text });
+	if (!send({ type: "add", col, text })) return notify("Not connected yet. Your card is still in the box.");
 	drafts.value[col] = "";
+	saved.value = col;
+	setTimeout(() => saved.value === col && (saved.value = ""), 900);
 }
-function remove(card: Card) {
-	if (confirm("Delete this card?")) send({ type: "delete", id: card.id });
-}
-function reveal() {
-	if (confirm("Reveal all cards for everyone? This can't be undone.")) send({ type: "reveal" });
-}
+const locking = ref(false);
+const errorKey = ref(0);
 async function setLocked(locked: boolean) {
+	if (locking.value) return;
 	error.value = "";
 	if (props.demo) return send({ type: "lock", locked });
+	locking.value = true;
 	try {
 		await post(`/api/boards/${props.code}/lock`, { password: lockPassword.value, locked });
 		showLock.value = false;
 		lockPassword.value = "";
 	} catch (e) {
 		error.value = (e as Error).message;
+		errorKey.value++;
+	} finally {
+		locking.value = false;
 	}
 }
 function startOver() {
-	if (!confirm("Reset the demo board to its starting cards?")) return;
 	resetDemo();
 	location.reload();
 }
@@ -211,7 +241,10 @@ const tick = setInterval(() => (clock.value = Date.now()), 1000);
 onUnmounted(() => clearInterval(tick));
 const timeLeft = computed(() => (state.value?.timerEnd ? state.value.timerEnd - (clock.value + offset.value) : null));
 watch(timeLeft, (now, before) => {
-	if (now !== null && now <= 0 && before !== null && before > 0) sounds.timesUp();
+	if (now !== null && now <= 0 && before !== null && before > 0) {
+		sounds.timesUp();
+		notify("Time's up");
+	}
 });
 const sound = ref(soundOn());
 function toggleSound() {
@@ -239,6 +272,19 @@ function washTo(color: string | null) {
 	}, 1600);
 }
 onUnmounted(() => document.documentElement.style.removeProperty("--mood"));
+
+// "N" jumps to the first add-note field (unless you're already typing somewhere or a dialog is open).
+function onShortcut(e: KeyboardEvent) {
+	if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey || presenting.value || summarizing.value) return;
+	const t = e.target as HTMLElement;
+	if (t.closest("input, textarea, select, [contenteditable]")) return;
+	const field = document.querySelector<HTMLInputElement>(".add input");
+	if (!field) return;
+	e.preventDefault();
+	field.focus();
+}
+addEventListener("keydown", onShortcut);
+onUnmounted(() => removeEventListener("keydown", onShortcut));
 
 // Change from last sprint's average, e.g. -2 or +0.4; null when there's nothing to compare.
 const moodDelta = computed(() => {
@@ -285,8 +331,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 			<h1 v-if="state.title">{{ state.title }}</h1>
 			<button v-if="!demo" class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
-			<span v-if="status !== 'open'" class="muted">Reconnecting…</span>
-			<span class="spacer" />
+			<div class="actions">
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
 				<span v-for="p in state.online.slice(0, 6)" :key="p" class="bubble" :class="{ typing: isTyping(p) }" :style="bubble(p)" :title="isTyping(p) ? `${p} is writing` : p">{{ initials(p) }}</span>
 				<span v-if="state.online.length > 6" class="bubble more">+{{ state.online.length - 6 }}</span>
@@ -296,31 +341,35 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 			</button>
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
 			<button v-if="state.phase !== 'writing'" @click="presenting = true">Present</button>
-			<button v-if="state.phase !== 'writing'" :class="{ primary: state.phase === 'locked' }" @click="summarizing = true">Summary</button>
-			<button
+			<button v-if="state.phase !== 'writing'" class="summary-btn" :class="{ primary: state.phase === 'locked' }" @click="summarizing = true">Summary</button>
+			<ConfirmButton
 				v-if="state.phase === 'writing'"
+				ask="Reveal for everyone?"
+				yes="Reveal"
 				class="primary"
 				:class="{ ready }"
 				:title="ready ? 'Everyone has written and rated' : undefined"
-				@click="reveal"
+				@confirm="send({ type: 'reveal' })"
 			>
 				Reveal
-			</button>
+			</ConfirmButton>
 			<button v-if="demo" class="ghost" @click="setLocked(state.phase !== 'locked')">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 			<button v-else-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 			<form v-else class="row lock" @submit.prevent="setLocked(state.phase !== 'locked')">
 				<input v-model="lockPassword" type="password" placeholder="Password" aria-label="Password" required />
-				<button>{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
+				<button :aria-busy="locking">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
 				<button type="button" class="ghost" @click="showLock = false">Cancel</button>
 			</form>
+			</div>
 		</header>
 		<div v-if="demo" class="demo-banner" role="note">
-			<span><strong>Demo board.</strong> Dina, Budi and Sari are made up, and everything is saved in this browser only. Try writing a card, then Reveal.</span>
+			<span class="long"><strong>Demo board.</strong> Dina, Budi and Sari are made up, and everything is saved in this browser only. Try writing a card, then Reveal.</span>
+			<span class="short"><strong>Demo board</strong>, saved in this browser only.</span>
 			<span class="spacer" />
-			<button class="small" @click="startOver">Reset demo</button>
+			<ConfirmButton ask="Start the demo over?" yes="Reset" class="small" @confirm="startOver">Reset demo</ConfirmButton>
 			<a href="/" class="small">Back to home</a>
 		</div>
-		<p v-if="error" class="error" role="alert">{{ error }}</p>
+		<p v-if="error" :key="errorKey" class="error" role="alert">{{ error }}</p>
 
 		<div class="top">
 			<div class="side">
@@ -402,10 +451,19 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 					@comment="(text) => send({ type: 'comment', id: card.id, text })"
 					@uncomment="(id) => send({ type: 'uncomment', id })"
 					@edit="(text) => send({ type: 'edit', id: card.id, text })"
-					@remove="remove(card)"
+					@remove="send({ type: 'delete', id: card.id })"
 				/>
-				<form v-if="state.phase !== 'locked'" class="add" @submit.prevent="add(col.key)">
-					<input v-model="drafts[col.key]" maxlength="500" placeholder="+ Add a note" :aria-label="`Add a note to ${col.label}`" @input="typing" />
+				<form v-if="state.phase !== 'locked'" class="add" :class="{ saved: saved === col.key }" @submit.prevent="add(col.key)">
+					<input
+						v-model="drafts[col.key]"
+						maxlength="500"
+						placeholder="+ Add a note"
+						:aria-label="`Add a note to ${col.label}`"
+						:data-col="col.key"
+						@input="typing"
+					/>
+					<span v-if="(drafts[col.key]?.length ?? 0) > 400" class="counter">{{ 500 - drafts[col.key].length }}</span>
+					<span v-if="saved === col.key" class="tick-mark" aria-hidden="true">✓</span>
 				</form>
 			</section>
 		</div>
@@ -419,6 +477,10 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 	</main>
 
 	<div v-if="washColor" class="wash" :style="{ '--mood': washColor }" aria-hidden="true" />
+	<div v-if="status === 'retrying'" class="conn" role="status">Connection lost. Reconnecting…</div>
+	<Transition name="toast">
+		<div v-if="toast" :key="toast" class="toast" role="status" aria-live="polite">{{ toast }}</div>
+	</Transition>
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
 	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" @close="summarizing = false" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
@@ -476,7 +538,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 main {
 	max-width: 1280px;
 	margin: 0 auto;
-	padding: 16px;
+	padding: 16px 16px 96px; /* bottom room so the last cards scroll out from under the emoji button */
 }
 header {
 	display: flex;
@@ -498,8 +560,55 @@ header {
 	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
 	border-radius: 12px;
 }
+.demo-banner .short {
+	display: none;
+}
 .demo-banner .small {
 	font-size: 13px;
+}
+.conn {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 70;
+	padding: 6px 12px;
+	text-align: center;
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--note-improve-ink);
+	background: var(--note-improve);
+	border-bottom: 1.5px solid color-mix(in srgb, var(--warn) 40%, transparent);
+	animation: slide-down 0.25s ease-out;
+}
+@keyframes slide-down {
+	from {
+		translate: 0 -100%;
+	}
+}
+.toast {
+	position: fixed;
+	left: 50%;
+	bottom: 24px;
+	z-index: 70;
+	translate: -50% 0;
+	max-width: calc(100vw - 32px);
+	padding: 9px 16px;
+	border-radius: 999px;
+	font-size: 14px;
+	font-weight: 700;
+	color: var(--surface);
+	background: var(--text);
+	box-shadow: var(--shadow);
+}
+.toast-enter-active,
+.toast-leave-active {
+	transition: opacity 0.2s, translate 0.25s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.toast-enter-from,
+.toast-leave-to {
+	opacity: 0;
+	translate: -50% 12px;
 }
 .gate-mascot {
 	justify-self: center;
@@ -563,6 +672,16 @@ header h1 {
 	border: 2px solid var(--bg);
 	margin-left: -8px;
 }
+/* When the board locks, the Summary button turns primary and nudges twice. */
+.summary-btn.primary {
+	animation: nudge-up 0.5s ease-in-out 2;
+}
+@keyframes nudge-up {
+	50% {
+		translate: 0 -3px;
+		scale: 1.05;
+	}
+}
 .primary.ready {
 	animation: ready-glow 2.4s ease-in-out infinite;
 }
@@ -583,6 +702,67 @@ header h1 {
 .bubble.more {
 	background: var(--surface);
 	color: var(--muted);
+}
+/* Actions sit on the right on wide screens and drop to their own row on phones. */
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+}
+@media (max-width: 640px) {
+	header {
+		gap: 8px;
+	}
+	header h1 {
+		font-size: 17px;
+	}
+	.actions {
+		width: 100%;
+		margin-left: 0;
+		padding-top: 8px;
+		border-top: 1.5px dashed var(--border);
+	}
+	.people {
+		margin-right: auto;
+	}
+	.demo-banner .long {
+		display: none;
+	}
+	/* Compact top panels so the cards start on the first screen. */
+	.top {
+		gap: 10px;
+		margin-bottom: 16px;
+	}
+	.side {
+		gap: 10px;
+	}
+	.top .bars .bar .track {
+		height: 26px;
+	}
+	.top .bars .face :deep(svg) {
+		width: 28px;
+		height: 28px;
+	}
+	.top .followups-panel .followups {
+		max-height: 132px;
+	}
+	.top :deep(.panel) {
+		padding: 12px 14px;
+	}
+	/* Smaller header buttons so the actions fit on one row. */
+	.actions > :is(button, .timer :deep(button), :deep(.confirm button)),
+	.actions :deep(.timer > button) {
+		padding: 5px 9px;
+		font-size: 14px;
+	}
+	.actions {
+		gap: 4px;
+	}
+	.demo-banner .short {
+		display: inline;
+	}
 }
 .lock input {
 	width: 170px;
@@ -812,6 +992,30 @@ header h1 {
 }
 .col-action h2 {
 	color: var(--note-action-tag);
+}
+.add {
+	position: relative;
+}
+.add .counter,
+.add .tick-mark {
+	position: absolute;
+	right: 12px;
+	top: 50%;
+	translate: 0 -50%;
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--muted);
+	pointer-events: none;
+}
+.add .tick-mark {
+	font-size: 16px;
+	color: var(--ok);
+	animation: pop 0.4s ease-out;
+}
+.add.saved input {
+	border-color: var(--ok);
+	border-style: solid;
+	transition: border-color 0.2s;
 }
 .add input {
 	border-style: dashed;

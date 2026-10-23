@@ -1,3 +1,5 @@
+import { type Ref, onMounted, onUnmounted } from "vue";
+
 export type Phase = "writing" | "revealed" | "locked";
 export type Reaction = { emoji: string; count: number; mine: boolean; names: string[] };
 export type Comment = { id: string; name: string; text: string; mine: boolean };
@@ -115,4 +117,54 @@ export function confetti() {
 		if (++frame < 150) requestAnimationFrame(tick);
 		else canvas.remove();
 	})();
+}
+
+// Closes a menu or popover on a click outside `el` or on Esc, while `open` is true.
+export function useDismiss(open: Ref<boolean>, el: Ref<HTMLElement | undefined>) {
+	const onPointer = (e: PointerEvent) => {
+		if (open.value && el.value && !el.value.contains(e.target as Node)) open.value = false;
+	};
+	const onKey = (e: KeyboardEvent) => {
+		if (open.value && e.key === "Escape") open.value = false;
+	};
+	onMounted(() => {
+		document.addEventListener("pointerdown", onPointer);
+		document.addEventListener("keydown", onKey);
+	});
+	onUnmounted(() => {
+		document.removeEventListener("pointerdown", onPointer);
+		document.removeEventListener("keydown", onKey);
+	});
+}
+
+// For dialogs: keeps Tab inside `el`, focuses its first control on open, and returns focus on close.
+export function useFocusTrap(el: Ref<HTMLElement | undefined>) {
+	let before: Element | null = null;
+	const controls = () =>
+		[...(el.value?.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])") ?? [])].filter(
+			(c) => !c.hasAttribute("disabled"),
+		);
+	const onKey = (e: KeyboardEvent) => {
+		if (e.key !== "Tab") return;
+		const list = controls();
+		if (!list.length) return;
+		const first = list[0];
+		const last = list[list.length - 1];
+		if (e.shiftKey && document.activeElement === first) {
+			e.preventDefault();
+			last.focus();
+		} else if (!e.shiftKey && document.activeElement === last) {
+			e.preventDefault();
+			first.focus();
+		}
+	};
+	onMounted(() => {
+		before = document.activeElement;
+		controls()[0]?.focus();
+		document.addEventListener("keydown", onKey);
+	});
+	onUnmounted(() => {
+		document.removeEventListener("keydown", onKey);
+		(before as HTMLElement | null)?.focus?.();
+	});
 }
