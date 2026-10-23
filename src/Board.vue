@@ -202,7 +202,23 @@ async function copyCode() {
 	setTimeout(() => (copied.value = false), 1200);
 }
 
-const cardsIn = (col: string) => state.value?.cards.filter((c) => c.col === col) ?? [];
+// Each column can sort by reactions (once cards are visible); remembered per browser. Ties keep writing order.
+const sortedCols = ref(new Set(load("sorted").split(",").filter(Boolean)));
+function toggleSort(col: string) {
+	const next = new Set(sortedCols.value);
+	if (next.has(col)) next.delete(col);
+	else next.add(col);
+	sortedCols.value = next;
+	save("sorted", [...next].join(","));
+}
+const cardsIn = (col: string) => {
+	const cards = state.value?.cards.filter((c) => c.col === col) ?? [];
+	if (!sortedCols.value.has(col) || state.value?.phase === "writing") return cards;
+	return cards
+		.map((c, i) => ({ c, i }))
+		.sort((a, b) => b.c.total - a.c.total || a.i - b.i)
+		.map(({ c }) => c);
+};
 const needsMood = computed(() => state.value && state.value.mood.mine === null && state.value.phase !== "locked");
 const moodMax = computed(() => Math.max(1, ...(state.value?.mood.counts ?? [])));
 // The page tints toward the mood: your own rating while writing (team results are still hidden),
@@ -491,7 +507,19 @@ const phaseLabel = computed(() =>
 				<h2>
 					{{ col.label }}
 					<span class="count">{{ cardsIn(col.key).length }}</span>
+					<button
+						v-if="state.phase !== 'writing' && cardsIn(col.key).length > 1"
+						class="ghost small icon-btn sort"
+						:class="{ on: sortedCols.has(col.key) }"
+						:aria-pressed="sortedCols.has(col.key)"
+						:title="sortedCols.has(col.key) ? 'Sorted by reactions' : 'Sort by reactions'"
+						:aria-label="`Sort ${col.label} by reactions`"
+						@click="toggleSort(col.key)"
+					>
+						<Icon name="sort" />
+					</button>
 				</h2>
+				<TransitionGroup name="reorder">
 				<NoteCard
 					v-for="card in cardsIn(col.key)"
 					:key="card.id"
@@ -506,6 +534,7 @@ const phaseLabel = computed(() =>
 					@edit="(text) => send({ type: 'edit', id: card.id, text })"
 					@remove="send({ type: 'delete', id: card.id })"
 				/>
+				</TransitionGroup>
 				<form v-if="state.phase !== 'locked'" class="add" :class="{ saved: saved === col.key }" @submit.prevent="add(col.key)">
 					<input
 						v-model="drafts[col.key]"
@@ -1063,6 +1092,18 @@ header h1 {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+}
+/* Cards glide to their new place when sorting reorders them. */
+.reorder-move {
+	transition: transform 0.35s cubic-bezier(0.3, 1.2, 0.5, 1);
+}
+.sort {
+	margin-left: auto;
+	color: var(--muted);
+}
+.sort.on {
+	color: var(--accent);
+	background: var(--accent-soft);
 }
 .col h2 .count {
 	font-size: 12px;

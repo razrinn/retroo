@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onMounted, onUpdated, ref } from "vue";
 import ConfirmButton from "./ConfirmButton.vue";
 import { type Card, type Phase, REACTIONS, hash, reducedMotion, useDismiss } from "./lib";
 
@@ -27,6 +27,17 @@ function send() {
 	if (reply.value.trim()) emit("comment", reply.value.trim());
 	reply.value = "";
 }
+
+// Long cards show 3 lines with a More toggle; the toggle only appears when the text is actually cut off.
+const textEl = ref<HTMLElement>();
+const expanded = ref(false);
+const overflowing = ref(false);
+function measure() {
+	const el = textEl.value;
+	if (el && !expanded.value) overflowing.value = el.scrollHeight > el.clientHeight + 1;
+}
+onMounted(measure);
+onUpdated(measure);
 
 const editing = ref(false);
 const draft = ref("");
@@ -78,7 +89,10 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 				@keydown.esc="editing = false"
 				@blur="finishEdit"
 			/>
-			<p v-else>{{ card.text }}</p>
+			<template v-else>
+				<p ref="textEl" :class="{ clamp: !expanded }">{{ card.text }}</p>
+				<button v-if="overflowing || expanded" class="more" @click="expanded = !expanded">{{ expanded ? "Less" : "More" }}</button>
+			</template>
 			<footer>
 				<span v-if="card.mine" class="who">You</span>
 				<span class="spacer" />
@@ -205,6 +219,24 @@ footer {
 	align-items: center;
 	gap: 4px;
 	font-size: 13px;
+}
+.clamp {
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.more {
+	all: unset;
+	cursor: pointer;
+	margin: -4px 0 6px;
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--tag);
+}
+.more:focus-visible {
+	outline: 2px solid var(--accent);
+	border-radius: 4px;
 }
 .who {
 	color: var(--tag, var(--muted));
