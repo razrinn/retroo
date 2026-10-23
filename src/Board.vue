@@ -12,7 +12,7 @@ import Summary from "./Summary.vue";
 import Timer from "./Timer.vue";
 import { demoSocket, resetDemo } from "./demo";
 import { setSound, soundOn, sounds } from "./sound";
-import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, moodTint, post, save } from "./lib";
+import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, moodTint, post, save, useDismiss } from "./lib";
 
 // `demo` swaps the real WebSocket for the in-browser stand-in from demo.ts (the /demo page).
 const props = defineProps<{ code: string; demo?: boolean }>();
@@ -173,6 +173,8 @@ function add(col: string) {
 	setTimeout(() => saved.value === col && (saved.value = ""), 900);
 }
 const locking = ref(false);
+const lockEl = ref<HTMLElement>();
+useDismiss(showLock, lockEl);
 const errorKey = ref(0);
 async function setLocked(locked: boolean) {
 	if (locking.value) return;
@@ -391,20 +393,23 @@ const phaseLabel = computed(() =>
 			>
 				Reveal
 			</ConfirmButton>
-			<button
-				v-if="demo || !showLock"
-				class="ghost icon-btn"
-				:title="state.phase === 'locked' ? 'Unlock' : 'Lock'"
-				:aria-label="state.phase === 'locked' ? 'Unlock' : 'Lock'"
-				@click="demo ? setLocked(state.phase !== 'locked') : (showLock = true)"
-			>
-				<Icon :name="state.phase === 'locked' ? 'unlock' : 'lock'" /><span class="lbl">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</span>
-			</button>
-			<form v-else class="row lock" @submit.prevent="setLocked(state.phase !== 'locked')">
-				<input v-model="lockPassword" type="password" placeholder="Password" aria-label="Password" required />
-				<button :aria-busy="locking">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
-				<button type="button" class="ghost" @click="showLock = false">Cancel</button>
-			</form>
+			<span ref="lockEl" class="lock-wrap">
+				<button
+					class="ghost icon-btn"
+					:title="state.phase === 'locked' ? 'Unlock' : 'Lock'"
+					:aria-label="state.phase === 'locked' ? 'Unlock' : 'Lock'"
+					:aria-expanded="demo ? undefined : showLock"
+					@click="demo ? setLocked(state.phase !== 'locked') : (showLock = !showLock)"
+				>
+					<Icon :name="state.phase === 'locked' ? 'unlock' : 'lock'" /><span class="lbl">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</span>
+				</button>
+				<!-- A popover under the button, so asking for the password never changes the header's size. -->
+				<form v-if="showLock && !demo" class="lock-pop" @submit.prevent="setLocked(state.phase !== 'locked')">
+					<label for="lock-pw">{{ state.phase === "locked" ? "Unlock this board" : "Lock this board" }}</label>
+					<input id="lock-pw" v-model="lockPassword" type="password" placeholder="Password" required autofocus />
+					<button class="primary" :aria-busy="locking">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
+				</form>
+			</span>
 			</div>
 		</header>
 		<div v-if="demo" class="demo-banner" role="note">
@@ -817,8 +822,33 @@ header h1 {
 		display: inline;
 	}
 }
-.lock input {
-	width: 170px;
+.lock-wrap {
+	position: relative;
+}
+.lock-pop {
+	position: absolute;
+	right: 0;
+	top: calc(100% + 6px);
+	z-index: 20;
+	display: grid;
+	gap: 8px;
+	width: 220px;
+	padding: 12px;
+	background: var(--surface);
+	border: 1.5px solid var(--border);
+	border-radius: 12px;
+	box-shadow: var(--shadow);
+	animation: pop-down 0.18s ease-out;
+}
+.lock-pop label {
+	font-size: 13px;
+	font-weight: 700;
+}
+@keyframes pop-down {
+	from {
+		opacity: 0;
+		translate: 0 -6px;
+	}
 }
 /* Mood and last sprint stacked in the left third, the doodle in the right two-thirds; one column on phones. */
 .top {
