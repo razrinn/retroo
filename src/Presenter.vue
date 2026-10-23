@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import Icon from "./Icon.vue";
 import { COLS, type Card, useFocusTrap } from "./lib";
 
 // Only the presenter's screen changes; everyone else keeps the normal board and follows the screen share.
@@ -82,7 +83,7 @@ function add() {
 			<strong>Presenting</strong>
 			<span class="muted">Arrow keys to move, Esc to exit</span>
 			<span class="spacer" />
-			<button @click="emit('close')">Exit</button>
+			<button class="icon-btn" title="Exit" aria-label="Exit presenter" @click="emit('close')"><Icon name="close" /><span class="lbl">Exit</span></button>
 		</header>
 
 		<div class="stage">

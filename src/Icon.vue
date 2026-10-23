@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // Small line icons for header buttons; they inherit the text color. Decorative: the button carries the label.
-defineProps<{ name: "timer" | "present" | "summary" | "lock" | "unlock" | "sound" | "mute" }>();
+defineProps<{
+	name: "timer" | "present" | "summary" | "lock" | "unlock" | "sound" | "mute" | "copy" | "download" | "share" | "markdown" | "undo" | "brush" | "close";
+}>();
 </script>
 
 <template>
@@ -27,8 +29,31 @@ defineProps<{ name: "timer" | "present" | "summary" | "lock" | "unlock" | "sound
 		<template v-else-if="name === 'sound'">
 			<path d="M4 9.5v5h3.5l4.5 3.5v-12L7.5 9.5zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
 		</template>
-		<template v-else>
+		<template v-else-if="name === 'mute'">
 			<path d="M4 9.5v5h3.5l4.5 3.5v-12L7.5 9.5zM16 9.5l5 5M21 9.5l-5 5" />
+		</template>
+		<template v-else-if="name === 'copy'">
+			<rect x="8.5" y="8.5" width="12" height="12" rx="2" />
+			<path d="M15.5 8.5V5.5a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" />
+		</template>
+		<template v-else-if="name === 'download'">
+			<path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4.5 17.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2" />
+		</template>
+		<template v-else-if="name === 'share'">
+			<path d="M12 14.5V3.5M7.5 8l4.5-4.5L16.5 8M7 11.5H6a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5V13a1.5 1.5 0 0 0-1.5-1.5h-1" />
+		</template>
+		<template v-else-if="name === 'markdown'">
+			<rect x="2.5" y="6" width="19" height="12" rx="2" />
+			<path d="M6 15V9l2.5 3L11 9v6M15.5 9v6M13.5 13l2 2 2-2" />
+		</template>
+		<template v-else-if="name === 'undo'">
+			<path d="M9 7.5L4.5 12 9 16.5M4.5 12h10a5 5 0 0 1 0 10h-2" />
+		</template>
+		<template v-else-if="name === 'brush'">
+			<path d="M14.5 4.5l5 5L10 19l-5.5.5L5 14z" />
+		</template>
+		<template v-else>
+			<path d="M6 6l12 12M18 6L6 18" />
 		</template>
 	</svg>
 </template>

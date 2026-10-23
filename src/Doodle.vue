@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
+import Icon from "./Icon.vue";
 
 // Shared doodle wall. Points are 0..1 fractions of a fixed 16:10 canvas, so drawings look the same on every screen.
 type Stroke = { c: string; w: number; p: [number, number][] };
@@ -124,10 +125,19 @@ onUnmounted(() => observer.disconnect());
 						@click="color = c"
 					/>
 				</div>
-				<button class="ghost small" :class="{ on: width === 8 }" :aria-pressed="width === 8" @click="width = width === 8 ? 3 : 8">
-					{{ width === 8 ? "Thick" : "Thin" }}
+				<button
+					class="ghost small icon-btn"
+					:class="{ on: width === 8 }"
+					:aria-pressed="width === 8"
+					:title="width === 8 ? 'Thick brush' : 'Thin brush'"
+					:aria-label="width === 8 ? 'Thick brush' : 'Thin brush'"
+					@click="width = width === 8 ? 3 : 8"
+				>
+					<Icon name="brush" :style="{ strokeWidth: width === 8 ? 2.8 : 1.6 }" /><span class="lbl">{{ width === 8 ? "Thick" : "Thin" }}</span>
 				</button>
-				<button class="ghost small" aria-label="Undo your last stroke" @click="emit('send', { type: 'undo' })">Undo</button>
+				<button class="ghost small icon-btn" title="Undo" aria-label="Undo your last stroke" @click="emit('send', { type: 'undo' })">
+					<Icon name="undo" /><span class="lbl">Undo</span>
+				</button>
 			</template>
 			<span v-else-if="locked" class="muted small-text">View only</span>
 		</header>

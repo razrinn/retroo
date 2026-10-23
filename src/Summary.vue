@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { domToBlob } from "modern-screenshot";
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import Icon from "./Icon.vue";
 import ShareCard from "./ShareCard.vue";
 import { type BoardState, type Card, COLS, useFocusTrap } from "./lib";
 
@@ -124,7 +125,7 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 			<header>
 				<h1>Summary</h1>
 				<span class="spacer" />
-				<button class="ghost close" aria-label="Close summary" @click="emit('close')">✕</button>
+				<button class="ghost close" title="Close" aria-label="Close summary" @click="emit('close')"><Icon name="close" /></button>
 			</header>
 
 			<div ref="frame" class="frame">
@@ -134,12 +135,12 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 			</div>
 
 			<footer>
-				<button class="primary" @click="copyImage">Copy image</button>
-				<button @click="downloadImage">Download</button>
-				<button v-if="canShare" @click="shareImage">Share</button>
+				<button class="primary icon-btn" title="Copy image" aria-label="Copy image" @click="copyImage"><Icon name="copy" /><span class="lbl">Copy image</span></button>
+				<button class="icon-btn" title="Download" aria-label="Download image" @click="downloadImage"><Icon name="download" /><span class="lbl">Download</span></button>
+				<button v-if="canShare" class="icon-btn" title="Share" aria-label="Share image" @click="shareImage"><Icon name="share" /><span class="lbl">Share</span></button>
 				<span class="spacer" />
 				<span v-if="imageStatus" class="status muted" role="status">{{ imageStatus }}</span>
-				<button class="ghost" @click="copy">Copy as Markdown</button>
+				<button class="ghost icon-btn" title="Copy as Markdown" aria-label="Copy as Markdown" @click="copy"><Icon name="markdown" /><span class="lbl">Markdown</span></button>
 			</footer>
 		</article>
 	</div>
@@ -181,6 +182,8 @@ h1 {
 	font-size: 20px;
 }
 .close {
+	display: grid;
+	place-items: center;
 	width: 34px;
 	height: 34px;
 	padding: 0;
