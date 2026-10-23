@@ -18,13 +18,14 @@ export type BoardState = {
 	previousTitle: string;
 	followUps: FollowUp[];
 	phase: Phase;
+	anonymous: boolean;
 	online: string[];
 	now: number;
 	timerEnd: number | null;
 	mood: Mood;
 	cards: Card[];
 };
-export type ListedBoard = { code: string; title: string; created_at: number };
+export type ListedBoard = { code: string; title: string; created_at: number; mood: number | null; anonymous: number };
 
 export const COLS = [
 	{ key: "well", label: "Went well" },
@@ -33,6 +34,14 @@ export const COLS = [
 ];
 // Mood levels 1-5, drawn as Stickie faces (Mascot.vue).
 export const MOODS = [1, 2, 3, 4, 5];
+// Mood 1-5 as colors (red, amber, grey, mint, lavender); moodTint blends between them for averages like 3.6.
+export const MOOD_TINTS = ["#d85a30", "#ef9f27", "#888780", "#1d9e75", "#7f77dd"];
+const mixHex = (a: string, b: string, t: number) =>
+	"#" + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, "0")).join("");
+export function moodTint(level: number) {
+	const i = Math.min(3, Math.max(0, Math.floor(level - 1)));
+	return mixHex(MOOD_TINTS[i], MOOD_TINTS[i + 1], Math.min(1, Math.max(0, level - 1 - i)));
+}
 export const GITHUB_URL = "https://github.com/razrinn/retroo";
 export const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];
 

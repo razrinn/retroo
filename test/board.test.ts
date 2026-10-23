@@ -20,8 +20,8 @@ after(() => server.close());
 const post = (path: string, body: object) =>
 	fetch(base + path, { method: "POST", body: JSON.stringify(body) });
 
-async function create(previous = "") {
-	const res = await post("/api/boards", { password: PASSWORD, title: "Test", previous });
+async function create(previous = "", extra: object = {}) {
+	const res = await post("/api/boards", { password: PASSWORD, title: "Test", previous, ...extra });
 	assert.equal(res.status, 200);
 	return ((await res.json()) as { code: string }).code;
 }
@@ -253,7 +253,7 @@ test("emoji rain reaches everyone, only known emojis, with a spam limit", async 
 	const b = await join(code, "bobby-0007");
 	await a.send({ type: "burst", emoji: "🎉" });
 	await a.send({ type: "burst", emoji: "🍕" });
-	assert.deepEqual(b.bursts, [{ burst: "🎉", name: "alice" }]);
+	assert.deepEqual(b.bursts.map(({ burst, name }) => ({ burst, name })), [{ burst: "🎉", name: "alice" }]);
 	assert.equal(b.s.phase, "writing", "bursts don't replace board state");
 	for (let i = 0; i < 10; i++) a.send({ type: "burst", emoji: "🚀" });
 	await new Promise((r) => setTimeout(r, 500));
@@ -309,6 +309,46 @@ test("typing signal goes to everyone else, at most every 2 seconds", async () =>
 	assert.deepEqual(typing(a), [], "you don't get your own typing signal");
 	a.close();
 	b.close();
+});
+
+test("anonymous boards never send author names", async () => {
+	const code = await create("", { anonymous: true });
+	const a = await join(code, "alice-0011");
+	const b = await join(code, "bobby-0011");
+	await a.send({ type: "add", col: "action", text: "secret author" });
+	await b.send({ type: "comment", id: a.s.cards[0].id, text: "who wrote this?" });
+	await b.send({ type: "typing" });
+	await b.send({ type: "burst", emoji: "🎉" });
+	assert.equal(a.s.anonymous, true);
+	assert.equal(a.s.cards[0].mine, true, "you can still tell your own cards");
+	const json = JSON.stringify([a.s, a.events]);
+	assert.ok(!json.includes("alice") || a.s.online.includes("alice"), "names only appear in the online list");
+	assert.equal(b.s.cards[0].name, "");
+	assert.equal(b.s.cards[0].comments[0].name, "");
+	assert.ok(!a.events.some((e) => "typing" in e), "no typing signal on anonymous boards");
+	const burst = a.events.find((e) => e.burst);
+	assert.equal(burst.name, "");
+	assert.ok(burst.from && !burst.from.includes("bobby"), "bursts carry an opaque tag instead");
+	a.close();
+	b.close();
+});
+
+test("the board list keeps each board's mood, but only once revealed", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0012");
+	await a.send({ type: "mood", value: 4 });
+	const moodOf = async () => {
+		const list = (await (await post("/api/boards/list", { password: PASSWORD })).json()) as { code: string; mood: number | null }[];
+		return list.find((b) => b.code === code)!.mood;
+	};
+	assert.equal(await moodOf(), null, "hidden while writing");
+	await a.send({ type: "reveal" });
+	await new Promise((r) => setTimeout(r, 200));
+	assert.equal(await moodOf(), 4);
+	await a.send({ type: "mood", value: 2 });
+	await new Promise((r) => setTimeout(r, 200));
+	assert.equal(await moodOf(), 2, "later changes are picked up");
+	a.close();
 });
 
 test("unknown boards are 404", async () => {

@@ -7,7 +7,7 @@ import { sounds } from "./sound";
 const emit = defineEmits<{ send: [emoji: string] }>();
 
 type Drop = { id: number; emoji: string; name: string; x: number; drift: number; size: number; delay: number };
-type Combo = { id: number; emoji: string; names: string[]; count: number; pulse: number; leaving: boolean; timer: number };
+type Combo = { id: number; emoji: string; people: string[]; names: string[]; count: number; pulse: number; leaving: boolean; timer: number };
 const PER_BURST = 6;
 // Combo: when COMBO_PEOPLE different people send the same emoji within COMBO_WINDOW ms, their rain
 // collapses into one big emoji in the middle (like Google Meet). More of it bumps the counter.
@@ -16,7 +16,7 @@ const COMBO_WINDOW = 1500;
 const COMBO_HOLD = 1600;
 const drops = ref<Drop[]>([]);
 const combos = ref<Combo[]>([]);
-const recent = new Map<string, { name: string; at: number }[]>();
+const recent = new Map<string, { from: string; name: string; at: number }[]>();
 const open = ref(false);
 let nextId = 0;
 
@@ -28,23 +28,26 @@ function holdCombo(c: Combo) {
 	}, COMBO_HOLD);
 }
 
-function drop(emoji: string, name: string) {
+// People are told apart by `from` (an opaque tag from the server), so combos work on anonymous boards too.
+function drop(emoji: string, name: string, from = name) {
 	const combo = combos.value.find((c) => c.emoji === emoji && !c.leaving);
 	if (combo) {
 		combo.count++;
 		combo.pulse++;
-		if (!combo.names.includes(name)) combo.names.push(name);
+		if (!combo.people.includes(from)) combo.people.push(from);
+		if (name && !combo.names.includes(name)) combo.names.push(name);
 		holdCombo(combo);
 		return;
 	}
 	const now = Date.now();
-	const seen = [...(recent.get(emoji) ?? []).filter((r) => now - r.at < COMBO_WINDOW), { name, at: now }];
+	const seen = [...(recent.get(emoji) ?? []).filter((r) => now - r.at < COMBO_WINDOW), { from, name, at: now }];
 	recent.set(emoji, seen);
-	const names = [...new Set(seen.map((r) => r.name))];
-	if (names.length >= COMBO_PEOPLE) {
+	const people = [...new Set(seen.map((r) => r.from))];
+	if (people.length >= COMBO_PEOPLE) {
 		recent.delete(emoji);
 		drops.value = drops.value.filter((d) => d.emoji !== emoji);
-		combos.value.push({ id: nextId++, emoji, names, count: seen.length, pulse: 0, leaving: false, timer: 0 });
+		const names = [...new Set(seen.map((r) => r.name).filter(Boolean))];
+		combos.value.push({ id: nextId++, emoji, people, names, count: seen.length, pulse: 0, leaving: false, timer: 0 });
 		holdCombo(combos.value[combos.value.length - 1]);
 		sounds.combo();
 		return;
@@ -86,7 +89,8 @@ defineExpose({ drop });
 			<div v-for="c in combos" :key="c.id" class="combo" :class="{ leaving: c.leaving }">
 				<span :key="c.pulse" class="big">{{ c.emoji }}</span>
 				<strong :key="`n${c.count}`" class="count">×{{ c.count }}</strong>
-				<small>{{ c.names.slice(0, 2).join(", ") }}<template v-if="c.names.length > 2"> +{{ c.names.length - 2 }}</template></small>
+				<small v-if="c.names.length">{{ c.names.slice(0, 2).join(", ") }}<template v-if="c.people.length > 2"> +{{ c.people.length - 2 }}</template></small>
+				<small v-else>{{ c.people.length }} people</small>
 			</div>
 		</div>
 	</div>

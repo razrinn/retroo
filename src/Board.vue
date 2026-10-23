@@ -5,10 +5,11 @@ import EmojiRain from "./EmojiRain.vue";
 import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
 import Presenter from "./Presenter.vue";
+import Summary from "./Summary.vue";
 import Timer from "./Timer.vue";
 import { demoSocket, resetDemo } from "./demo";
 import { setSound, soundOn, sounds } from "./sound";
-import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, post, save } from "./lib";
+import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, moodTint, post, save } from "./lib";
 
 // `demo` swaps the real WebSocket for the in-browser stand-in from demo.ts (the /demo page).
 const props = defineProps<{ code: string; demo?: boolean }>();
@@ -25,6 +26,7 @@ const error = ref("");
 const showLock = ref(false);
 const lockPassword = ref("");
 const presenting = ref(false);
+const summarizing = ref(false);
 const copied = ref(false);
 const offset = ref(0);
 const rain = ref<InstanceType<typeof EmojiRain>>();
@@ -91,7 +93,7 @@ function onMessage(data: any) {
 	// Full board states carry a phase; emoji rain and doodle strokes are small events of their own.
 	if ("phase" in data) onState(data);
 	else if ("typing" in data) typingUntil.value = { ...typingUntil.value, [data.typing]: Date.now() + 4000 };
-	else if (data.burst) rain.value?.drop(data.burst, data.name);
+	else if (data.burst) rain.value?.drop(data.burst, data.name, data.from);
 	else doodle.value?.apply(data);
 }
 
@@ -171,14 +173,9 @@ const needsMood = computed(() => state.value && state.value.mood.mine === null &
 const moodMax = computed(() => Math.max(1, ...(state.value?.mood.counts ?? [])));
 // The page tints toward the mood: your own rating while writing (team results are still hidden),
 // the team average once revealed. Averages blend between neighbours, so 3.6 sits between grey and mint.
-const MOOD_TINTS = ["#d85a30", "#ef9f27", "#888780", "#1d9e75", "#7f77dd"];
-const mix = (a: string, b: string, t: number) =>
-	"#" + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, "0")).join("");
 function moodColor(s: BoardState) {
 	const level = s.phase === "writing" ? s.mood.mine : (s.mood.average ?? s.mood.mine);
-	if (level === null) return null;
-	const i = Math.min(3, Math.floor(level - 1));
-	return mix(MOOD_TINTS[i], MOOD_TINTS[i + 1], level - 1 - i);
+	return level === null ? null : moodTint(level);
 }
 watchEffect(() => {
 	const color = state.value && moodColor(state.value);
@@ -294,6 +291,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 			<h1 v-if="state.title">{{ state.title }}</h1>
 			<button v-if="!demo" class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
+			<span v-if="state.anonymous" class="phase anon" title="Names are hidden on cards and comments">Anonymous</span>
 			<span v-if="status !== 'open'" class="muted">Reconnecting…</span>
 			<span class="spacer" />
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
@@ -305,6 +303,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 			</button>
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
 			<button v-if="state.phase !== 'writing'" @click="presenting = true">Present</button>
+			<button v-if="state.phase !== 'writing'" :class="{ primary: state.phase === 'locked' }" @click="summarizing = true">Summary</button>
 			<button
 				v-if="state.phase === 'writing'"
 				class="primary"
@@ -429,6 +428,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 
 	<div v-if="washColor" class="wash" :style="{ '--mood': washColor }" aria-hidden="true" />
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
+	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" @close="summarizing = false" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>
 
@@ -547,6 +547,12 @@ header h1 {
 	border-radius: 50%;
 	background: currentColor;
 	vertical-align: 1px;
+}
+.phase.anon {
+	color: var(--accent);
+}
+.phase.anon::before {
+	display: none;
 }
 .phase.locked {
 	color: var(--muted);

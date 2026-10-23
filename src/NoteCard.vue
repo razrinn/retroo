@@ -61,7 +61,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 		@pointerleave="lean = { x: 0, y: 0 }"
 	>
 		<template v-if="card.text === null">
-			<span class="who">{{ card.name }}</span>
+			<span class="who">{{ card.name || "Someone" }}</span>
 			<span class="hidden-label">{{ typing ? "Writing…" : "Hidden" }}</span>
 		</template>
 		<template v-else>
@@ -79,7 +79,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 			/>
 			<p v-else>{{ card.text }}</p>
 			<footer>
-				<span class="who">{{ card.name }}<template v-if="card.mine"> · you</template></span>
+				<span class="who">{{ card.name ? card.name + (card.mine ? " · you" : "") : card.mine ? "You" : "Anonymous" }}</span>
 				<span class="spacer" />
 				<template v-if="card.mine && phase !== 'locked'">
 					<button v-if="!editing" class="ghost small" @click="startEdit">Edit</button>
@@ -120,7 +120,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 			</div>
 			<div v-if="threadOpen" class="thread">
 				<p v-for="m in card.comments" :key="m.id" class="comment">
-					<strong>{{ m.name }}</strong> {{ m.text }}
+					<strong>{{ m.name || (m.mine ? "You" : "Anonymous") }}</strong> {{ m.text }}
 					<button v-if="m.mine && phase !== 'locked'" class="ghost small" aria-label="Delete comment" @click="emit('uncomment', m.id)">✕</button>
 				</p>
 				<form v-if="canComment" @submit.prevent="send">

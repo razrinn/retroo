@@ -98,10 +98,10 @@ function add() {
 							<footer>
 								<span v-for="r in current.reactions" :key="r.emoji" class="r">{{ r.emoji }} {{ r.count }}</span>
 								<span class="spacer" />
-								{{ current.name }}
+								{{ current.name || "Anonymous" }}
 							</footer>
 							<ul v-if="current.comments.length" class="comments">
-								<li v-for="m in current.comments" :key="m.id"><strong>{{ m.name }}</strong> {{ m.text }}</li>
+								<li v-for="m in current.comments" :key="m.id"><strong>{{ m.name || "Anonymous" }}</strong> {{ m.text }}</li>
 							</ul>
 						</article>
 					</Transition>

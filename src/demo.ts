@@ -83,6 +83,7 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			previousTitle: data.previousTitle,
 			followUps: data.followUps,
 			phase: data.phase,
+			anonymous: false,
 			online: Object.values(data.people).sort(),
 			now: Date.now(),
 			timerEnd: data.timerEnd,
@@ -177,7 +178,7 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 				data.phase = msg.locked ? "locked" : "revealed";
 				break;
 			case "burst":
-				on.message({ burst: msg.emoji, name: data.people[me] });
+				on.message({ burst: msg.emoji, name: data.people[me], from: me });
 				return;
 			case "doodle":
 				on.message({ doodle: data.strokes.map((s) => ({ ...s, mine: s.author === me })) });
