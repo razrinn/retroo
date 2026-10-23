@@ -58,7 +58,7 @@ export default {
 		const path = url.pathname;
 
 		if (req.method === "POST" && path === "/api/boards") {
-			const body = await req.json<{ password?: string; title?: string; previous?: string }>().catch(() => ({}) as never);
+			const body = await req.json<{ password?: string; title?: string; previous?: string; hidden?: boolean }>().catch(() => ({}) as never);
 			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
 			const title = String(body.title ?? "").trim().slice(0, 100);
 			const previous = body.previous ? normalizeCode(String(body.previous)) : null;
@@ -68,7 +68,7 @@ export default {
 			await env.DB.prepare("INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)")
 				.bind(code, title, Date.now())
 				.run();
-			await boardStub(env, code).init(title, carried, previous, code);
+			await boardStub(env, code).init(title, carried, previous, code, body.hidden === true);
 			return json({ code });
 		}
 
@@ -150,9 +150,12 @@ export class Board extends DurableObject<Env> {
 		return this.meta("phase") as Phase | undefined;
 	}
 
-	init(title: string, previous: CarryOver | null, previousCode: string | null, code: string) {
+	// Live boards (the default) start open: cards are visible as they're written, reactions and mood results
+	// right away. Hidden boards start in "writing" and flip everything over at Reveal.
+	init(title: string, previous: CarryOver | null, previousCode: string | null, code: string, hidden: boolean) {
 		this.setMeta("title", title);
-		this.setMeta("phase", "writing");
+		this.setMeta("phase", hidden ? "writing" : "revealed");
+		if (!hidden) this.setMeta("live", "1");
 		this.setMeta("code", code);
 		if (!previous || !previousCode) return;
 		this.setMeta("previous_code", previousCode);
@@ -366,7 +369,9 @@ export class Board extends DurableObject<Env> {
 			case "typing": {
 				// "Someone is writing": relayed to everyone else, never stored, at most once per 2 seconds each.
 				const now = Date.now();
-				if (now - (this.lastTyping.get(client) ?? 0) < 2000) return;
+				// Only while cards are hidden: once cards appear as they're written, "Dina just stopped typing"
+				// would give away which card is hers.
+				if (phase !== "writing" || now - (this.lastTyping.get(client) ?? 0) < 2000) return;
 				this.lastTyping.set(client, now);
 				const name = this.sql.exec<{ name: string }>("SELECT name FROM people WHERE id = ?", client).toArray()[0]?.name ?? "";
 				this.toEach((c) => (c === client ? null : { typing: name }));
@@ -407,6 +412,7 @@ export class Board extends DurableObject<Env> {
 				: [];
 		const phase = this.phase;
 		const title = this.meta("title") ?? "";
+		const live = this.meta("live") === "1";
 		const previousTitle = this.meta("previous_title") ?? "";
 		const followUps = this.sql.exec("SELECT id, text, carried, status FROM followups ORDER BY rowid").toArray();
 		const online = names([...new Set(clients)]);
@@ -445,6 +451,7 @@ export class Board extends DurableObject<Env> {
 					previousTitle,
 					followUps,
 					phase,
+					live,
 					online,
 					now: Date.now(),
 					timerEnd,

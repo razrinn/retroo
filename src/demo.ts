@@ -83,6 +83,7 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			previousTitle: data.previousTitle,
 			followUps: data.followUps,
 			phase: data.phase,
+			live: false,
 			online: Object.values(data.people).sort(),
 			now: Date.now(),
 			timerEnd: data.timerEnd,

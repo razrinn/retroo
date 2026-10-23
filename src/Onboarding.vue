@@ -5,7 +5,7 @@ import { useFocusTrap } from "./lib";
 
 // First-time tours. "join" is for anyone opening a board; "run" is for whoever just created one.
 // Each step has a small looping scene made from the app's own pieces (see the .scene-* styles).
-const props = defineProps<{ tour: "join" | "run"; code: string }>();
+const props = defineProps<{ tour: "join" | "run"; code: string; live?: boolean }>();
 const emit = defineEmits<{ close: []; done: [] }>();
 
 type Step = { title: string; body: string; scene: string };
@@ -22,7 +22,13 @@ const TOURS: Record<"join" | "run", Step[]> = {
 		{ scene: "wrap", title: "Wrap up", body: "Lock the board when you're done. The Summary is ready to paste into Slack, Confluence or Notion." },
 	],
 };
-const steps = computed(() => TOURS[props.tour]);
+// Live boards show cards as they're written, so the first steps read differently there.
+const LIVE: Record<string, Partial<Step>> = {
+	write: { scene: "write-live", title: "Write anonymously", body: "Add notes in any column. Everyone sees them right away, but cards never show who wrote them." },
+	reveal: { title: "React and discuss", body: "React with one emoji per card to show what matters, and comment to discuss. The facilitator presents the most-reacted cards first." },
+	guide: { body: "Start a timer for writing, give people a few minutes to read and react, then Present, most-reacted first." },
+};
+const steps = computed(() => TOURS[props.tour].map((s) => (props.live ? { ...s, ...LIVE[s.scene] } : s)));
 const index = ref(0);
 const step = computed(() => steps.value[index.value]);
 const last = computed(() => index.value === steps.value.length - 1);
@@ -59,7 +65,14 @@ async function copyLink() {
 			<Transition name="scene" mode="out-in">
 				<div :key="step.scene" class="scene" :class="`scene-${step.scene}`" aria-hidden="true">
 					<!-- Write privately: notes land face-down while Stickie types. -->
-					<template v-if="step.scene === 'write'">
+					<template v-if="step.scene === 'write-live'">
+						<div class="notes">
+							<span class="note well land n1">Shipped on time</span>
+							<span class="note improve land n2">Too many meetings</span>
+							<span class="note well land n3">Great pairing</span>
+						</div>
+					</template>
+					<template v-else-if="step.scene === 'write'">
 						<div class="stickie-typing"><Mascot :size="54" /><span class="dots"><i /><i /><i /></span></div>
 						<div class="notes">
 							<span class="note back n1" /><span class="note back n2" /><span class="note back n3" />
@@ -255,6 +268,9 @@ footer {
 	font-weight: 700;
 	line-height: 1.3;
 	box-shadow: var(--shadow);
+}
+.note.land {
+	animation: land 3.2s ease-out infinite both;
 }
 .note.back {
 	background: repeating-linear-gradient(-45deg, var(--surface), var(--surface) 6px, var(--bg) 6px, var(--bg) 12px);

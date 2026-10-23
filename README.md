@@ -8,7 +8,7 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 
 ## Features
 
-- **Hidden until reveal:** write privately, then flip everyone's cards at once.
+- **Live or hidden:** cards appear as they're written (default), or stay face-down until a Reveal.
 - **Reactions and comments** on every card.
 - **Team mood** each sprint, compared with the last one.
 - **Action items carry over** to the next sprint until they're done.

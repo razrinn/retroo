@@ -220,7 +220,8 @@ const typingUntil = ref<Record<string, number>>({});
 const isTyping = (name: string) => (typingUntil.value[name] ?? 0) > clock.value;
 let lastTypingSent = 0;
 function typing() {
-	if (Date.now() - lastTypingSent < 2000) return;
+	// Only while cards are hidden (the server ignores it otherwise, to keep visible cards anonymous).
+	if (state.value?.phase !== "writing" || Date.now() - lastTypingSent < 2000) return;
 	lastTypingSent = Date.now();
 	send({ type: "typing" });
 }
@@ -317,7 +318,9 @@ const moodDelta = computed(() => {
 });
 const initials = (n: string) => n.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const bubble = (n: string) => ({ background: `hsl(${hash(n) % 360} 65% 82%)`, color: `hsl(${hash(n) % 360} 55% 22%)` });
-const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", locked: "Locked" })[state.value?.phase ?? "writing"]);
+const phaseLabel = computed(() =>
+	state.value?.phase === "revealed" && state.value.live ? "Open" : { writing: "Writing", revealed: "Revealed", locked: "Locked" }[state.value?.phase ?? "writing"],
+);
 </script>
 
 <template>
@@ -509,7 +512,7 @@ const phaseLabel = computed(() => ({ writing: "Writing", revealed: "Revealed", l
 		<div v-if="toast" :key="toast" class="toast" role="status" aria-live="polite">{{ toast }}</div>
 	</Transition>
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
-	<Onboarding v-if="tour && state" :tour="tour" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
+	<Onboarding v-if="tour && state" :tour="tour" :live="state.live" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
 	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" @close="summarizing = false" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>

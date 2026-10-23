@@ -20,8 +20,9 @@ after(() => server.close());
 const post = (path: string, body: object) =>
 	fetch(base + path, { method: "POST", body: JSON.stringify(body) });
 
+// Most tests exercise the hidden style (writing → reveal); pass { hidden: false } for a Live board.
 async function create(previous = "", extra: object = {}) {
-	const res = await post("/api/boards", { password: PASSWORD, title: "Test", previous, ...extra });
+	const res = await post("/api/boards", { password: PASSWORD, title: "Test", previous, hidden: true, ...extra });
 	assert.equal(res.status, 200);
 	return ((await res.json()) as { code: string }).code;
 }
@@ -347,6 +348,25 @@ test("the board list keeps each board's mood, but only once revealed", async () 
 	await new Promise((r) => setTimeout(r, 200));
 	assert.equal(await moodOf(), 2, "later changes are picked up");
 	a.close();
+});
+
+test("live boards: cards visible as written, reactions and mood right away, no typing signal", async () => {
+	const code = await create("", { hidden: false });
+	const a = await join(code, "alice-0013");
+	const b = await join(code, "bobby-0013");
+	assert.equal(a.s.phase, "revealed");
+	assert.equal(a.s.live, true);
+	await a.send({ type: "add", col: "improve", text: "visible right away" });
+	await b.send({ type: "typing" });
+	await b.send({ type: "react", id: b.s.cards[0].id, emoji: "🔥" });
+	await b.send({ type: "mood", value: 2 });
+	assert.equal(b.s.cards[0].text, "visible right away");
+	assert.equal(b.s.cards[0].name, "", "still anonymous");
+	assert.equal(a.s.cards[0].total, 1, "reactions work before any reveal");
+	assert.deepEqual(a.s.mood.counts, [0, 1, 0, 0, 0], "mood results show right away");
+	assert.ok(!a.events.some((e) => "typing" in e), "no typing signal once cards are visible");
+	a.close();
+	b.close();
 });
 
 test("unknown boards are 404", async () => {

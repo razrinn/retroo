@@ -20,6 +20,7 @@ export type BoardState = {
 	previousTitle: string;
 	followUps: FollowUp[];
 	phase: Phase;
+	live: boolean; // cards visible as written (no Reveal step); the "revealed" phase shows as Open
 	online: string[];
 	now: number;
 	timerEnd: number | null;
