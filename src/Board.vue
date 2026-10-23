@@ -440,11 +440,8 @@ const phaseLabel = computed(() =>
 				<!-- Always shown so people learn that action items carry over, even before there's anything to carry. -->
 				<section class="panel followups-panel">
 					<h2>Last sprint<span v-if="state.previousTitle" class="muted"> · {{ state.previousTitle }}</span></h2>
-					<p v-if="!state.followUps.length && state.previousTitle" class="empty muted">All caught up from {{ state.previousTitle }}.</p>
-					<p v-else-if="!state.followUps.length" class="empty muted">
-						Nothing carried over. When you create next sprint's board, choose this one under
-						<em>Carry over action items from</em>, and its open action items show up there.
-					</p>
+					<p v-if="!state.followUps.length && state.previousTitle" class="empty muted">All caught up.</p>
+					<p v-else-if="!state.followUps.length" class="empty muted">Unfinished action items from last sprint show up here.</p>
 					<ul v-else class="followups">
 						<li v-for="f in state.followUps" :key="f.id" :class="f.status">
 							<svg v-if="f.status === 'done'" class="tick" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" /></svg>
@@ -825,11 +822,6 @@ header h1 {
 	margin: 0;
 	font-size: 13px;
 	line-height: 1.5;
-}
-.followups-panel .empty em {
-	font-style: normal;
-	font-weight: 700;
-	color: var(--text);
 }
 .followups-panel .followups {
 	max-height: 220px;
