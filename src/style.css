@@ -126,6 +126,20 @@ button[aria-busy="true"] {
 		translate: 5px 0;
 	}
 }
+/* Header buttons: icon plus label on wide screens, icon only (label in the tooltip) below that. */
+.icon-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+@media (max-width: 1023px) {
+	.icon-btn .lbl {
+		display: none;
+	}
+	.icon-btn {
+		padding-inline: 9px;
+	}
+}
 .mono {
 	font-family: ui-monospace, monospace;
 	letter-spacing: 1px;

@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch, watchEffect } from "vue";
 import ConfirmButton from "./ConfirmButton.vue";
 import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
+import Icon from "./Icon.vue";
 import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
 import Onboarding from "./Onboarding.vue";
@@ -362,12 +363,23 @@ const phaseLabel = computed(() =>
 				<span v-for="p in state.online.slice(0, 6)" :key="p" class="bubble" :class="{ typing: isTyping(p) }" :style="bubble(p)" :title="isTyping(p) ? `${p} is writing` : p">{{ initials(p) }}</span>
 				<span v-if="state.online.length > 6" class="bubble more">+{{ state.online.length - 6 }}</span>
 			</div>
-			<button class="ghost" :aria-pressed="sound" :title="sound ? 'Sound on' : 'Sound off'" :aria-label="sound ? 'Turn sound off' : 'Turn sound on'" @click="toggleSound">
-				{{ sound ? "🔈" : "🔇" }}
+			<button class="ghost icon-btn" :aria-pressed="sound" :title="sound ? 'Sound on' : 'Sound off'" :aria-label="sound ? 'Turn sound off' : 'Turn sound on'" @click="toggleSound">
+				<Icon :name="sound ? 'sound' : 'mute'" />
 			</button>
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
-			<button v-if="state.phase !== 'writing'" @click="presenting = true">Present</button>
-			<button v-if="state.phase !== 'writing'" class="summary-btn" :class="{ primary: state.phase === 'locked' }" @click="summarizing = true">Summary</button>
+			<button v-if="state.phase !== 'writing'" class="icon-btn" title="Present" aria-label="Present" @click="presenting = true">
+				<Icon name="present" /><span class="lbl">Present</span>
+			</button>
+			<button
+				v-if="state.phase !== 'writing'"
+				class="summary-btn icon-btn"
+				:class="{ primary: state.phase === 'locked' }"
+				title="Summary"
+				aria-label="Summary"
+				@click="summarizing = true"
+			>
+				<Icon name="summary" /><span class="lbl">Summary</span>
+			</button>
 			<ConfirmButton
 				v-if="state.phase === 'writing'"
 				ask="Reveal for everyone?"
@@ -379,8 +391,15 @@ const phaseLabel = computed(() =>
 			>
 				Reveal
 			</ConfirmButton>
-			<button v-if="demo" class="ghost" @click="setLocked(state.phase !== 'locked')">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
-			<button v-else-if="!showLock" class="ghost" @click="showLock = true">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
+			<button
+				v-if="demo || !showLock"
+				class="ghost icon-btn"
+				:title="state.phase === 'locked' ? 'Unlock' : 'Lock'"
+				:aria-label="state.phase === 'locked' ? 'Unlock' : 'Lock'"
+				@click="demo ? setLocked(state.phase !== 'locked') : (showLock = true)"
+			>
+				<Icon :name="state.phase === 'locked' ? 'unlock' : 'lock'" /><span class="lbl">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</span>
+			</button>
 			<form v-else class="row lock" @submit.prevent="setLocked(state.phase !== 'locked')">
 				<input v-model="lockPassword" type="password" placeholder="Password" aria-label="Password" required />
 				<button :aria-busy="locking">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>

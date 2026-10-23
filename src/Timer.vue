@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
+import Icon from "./Icon.vue";
 import { useDismiss } from "./lib";
 
 // `offset` is server time minus this browser's time, so everyone's countdown agrees even with skewed clocks.
@@ -33,7 +34,9 @@ function start(seconds: number) {
 <template>
 	<div ref="root" class="timer">
 		<template v-if="remaining === null">
-			<button class="ghost" :aria-expanded="open" @click="open = !open">Timer</button>
+			<button class="ghost icon-btn" :aria-expanded="open" title="Timer" aria-label="Timer" @click="open = !open">
+				<Icon name="timer" /><span class="lbl">Timer</span>
+			</button>
 			<div v-if="open" class="menu">
 				<button v-for="m in [3, 5, 10]" :key="m" class="ghost" @click="start(m * 60)">{{ m }} min</button>
 			</div>
