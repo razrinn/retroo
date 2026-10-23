@@ -3,7 +3,7 @@
 // as the real WebSocket. Keep its rules in step with Board in src/worker.ts (the tests cover the real one).
 import { REACTIONS, load, save } from "./lib";
 
-const KEY = "retroo-demo";
+const KEY = "retroo-demo-live"; // new key when the starting data changes, so old saved demos start fresh
 const COLS = ["well", "improve", "action"];
 
 type Data = {
@@ -30,21 +30,24 @@ function seed(): Data {
 		0.78 + 0.1 * Math.cos((i / 39) * 2 * Math.PI),
 		0.45 + 0.16 * Math.sin((i / 39) * 2 * Math.PI),
 	]);
+	const cards = [
+		{ id: id(), col: "well", text: "Pairing on the payment bug saved us days", author: "dina", at: t },
+		{ id: id(), col: "well", text: "New hire onboarding went smoothly", author: "sari", at: t + 1 },
+		{ id: id(), col: "improve", text: "Too many meetings on Wednesday", author: "budi", at: t + 2 },
+		{ id: id(), col: "improve", text: "Staging was flaky again", author: "dina", at: t + 3 },
+		{ id: id(), col: "action", text: "Try no-meeting Wednesday afternoons (Budi)", author: "budi", at: t + 4 },
+	];
+	// A few reactions from the made-up teammates, so the board looks like a retro in progress.
+	const react = (card: number, person: string, emoji: string) => ({ card: cards[card].id, person, emoji });
 	return {
 		title: "Sprint 42 (demo)",
-		phase: "writing",
+		phase: "revealed", // a Live board, like new boards: cards visible, reactions open
 		previousTitle: "Sprint 41",
 		previousMood: 3.4,
 		timerEnd: null,
 		people: { ...TEAM },
-		cards: [
-			{ id: id(), col: "well", text: "Pairing on the payment bug saved us days", author: "dina", at: t },
-			{ id: id(), col: "well", text: "New hire onboarding went smoothly", author: "sari", at: t + 1 },
-			{ id: id(), col: "improve", text: "Too many meetings on Wednesday", author: "budi", at: t + 2 },
-			{ id: id(), col: "improve", text: "Staging was flaky again", author: "dina", at: t + 3 },
-			{ id: id(), col: "action", text: "Try no-meeting Wednesday afternoons (Budi)", author: "budi", at: t + 4 },
-		],
-		reactions: [],
+		cards,
+		reactions: [react(2, "dina", "🔥"), react(2, "sari", "🔥"), react(0, "budi", "❤️"), react(3, "budi", "👍")],
 		comments: [],
 		followUps: [
 			{ id: id(), text: "Write the onboarding doc (Sari)", carried: 3, status: "open" },
@@ -83,7 +86,7 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			previousTitle: data.previousTitle,
 			followUps: data.followUps,
 			phase: data.phase,
-			live: false,
+			live: true,
 			online: Object.values(data.people).sort(),
 			now: Date.now(),
 			timerEnd: data.timerEnd,

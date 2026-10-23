@@ -25,8 +25,8 @@ const TOURS: Record<"join" | "run", Step[]> = {
 // Live boards show cards as they're written, so the first steps read differently there.
 const LIVE: Record<string, Partial<Step>> = {
 	write: { scene: "write-live", title: "Write anonymously", body: "Add notes in any column. Everyone sees them right away, but cards never show who wrote them." },
-	reveal: { title: "React and discuss", body: "React with one emoji per card to show what matters, and comment to discuss. The facilitator presents the most-reacted cards first." },
-	guide: { body: "Start a timer for writing, give people a few minutes to read and react, then Present, most-reacted first." },
+	reveal: { scene: "react", title: "React and discuss", body: "React with one emoji per card to show what matters, and comment to discuss. The facilitator presents the most-reacted cards first." },
+	guide: { scene: "guide-live", body: "Start a timer for writing, give people a few minutes to read and react, then Present, most-reacted first." },
 };
 const steps = computed(() => TOURS[props.tour].map((s) => (props.live ? { ...s, ...LIVE[s.scene] } : s)));
 const index = ref(0);
@@ -79,6 +79,14 @@ async function copyLink() {
 						</div>
 					</template>
 
+					<!-- React (Live boards): the cards are already visible; reactions pop onto them. -->
+					<template v-else-if="step.scene === 'react'">
+						<div class="notes">
+							<span class="note well">Shipped on time<b class="react r1">👍 2</b></span>
+							<span class="note improve">Too many meetings<b class="react">🔥 3</b></span>
+							<span class="note well">Great pairing<b class="react r2">❤️ 1</b></span>
+						</div>
+					</template>
 					<!-- Reveal and react: the notes flip over and a reaction pops onto one. -->
 					<template v-else-if="step.scene === 'reveal'">
 						<div class="notes">
@@ -110,6 +118,14 @@ async function copyLink() {
 						<p class="muted hint">Click to copy the link</p>
 					</template>
 
+					<!-- Guide (Live boards): timer, then Present glows, then Summary. -->
+					<template v-else-if="step.scene === 'guide-live'">
+						<div class="guide-row">
+							<span class="ring"><svg viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" class="track" /><circle cx="11" cy="11" r="8" class="fill" /></svg>4:59</span>
+							<span class="fake primary glow">Present</span>
+							<span class="fake">Summary</span>
+						</div>
+					</template>
 					<!-- Guide: a timer ring drains, Reveal glows, Present follows. -->
 					<template v-else-if="step.scene === 'guide'">
 						<div class="guide-row">
@@ -362,6 +378,12 @@ footer {
 	100% {
 		transform: perspective(500px) rotateY(0deg);
 	}
+}
+.r1 {
+	animation-delay: 0.6s;
+}
+.r2 {
+	animation-delay: 1.1s;
 }
 .react {
 	position: absolute;

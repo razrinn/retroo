@@ -429,7 +429,7 @@ const phaseLabel = computed(() =>
 			</div>
 		</header>
 		<div v-if="demo" class="demo-banner" role="note">
-			<span class="long"><strong>Demo board.</strong> Dina, Budi and Sari are made up, and everything is saved in this browser only. Try writing a card, then Reveal.</span>
+			<span class="long"><strong>Demo board.</strong> Dina, Budi and Sari are made up, and everything is saved in this browser only. Try adding a card and reacting.</span>
 			<span class="short"><strong>Demo board</strong>, saved in this browser only.</span>
 			<span class="spacer" />
 			<ConfirmButton ask="Start the demo over?" yes="Reset" class="small" @confirm="startOver">Reset demo</ConfirmButton>
