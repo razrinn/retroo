@@ -12,7 +12,7 @@ import Summary from "./Summary.vue";
 import Timer from "./Timer.vue";
 import { demoSocket, resetDemo } from "./demo";
 import { setSound, soundOn, sounds } from "./sound";
-import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, confetti, formatCode, hash, load, moodTint, post, save, useDismiss } from "./lib";
+import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, type Stack, confetti, formatCode, hash, load, moodTint, post, save, stacksIn, useDismiss } from "./lib";
 
 // `demo` swaps the real WebSocket for the in-browser stand-in from demo.ts (the /demo page).
 const props = defineProps<{ code: string; demo?: boolean }>();
@@ -211,14 +211,26 @@ function toggleSort(col: string) {
 	sortedCols.value = next;
 	save("sorted", [...next].join(","));
 }
-const cardsIn = (col: string) => {
-	const cards = state.value?.cards.filter((c) => c.col === col) ?? [];
-	if (!sortedCols.value.has(col) || state.value?.phase === "writing") return cards;
-	return cards
-		.map((c, i) => ({ c, i }))
-		.sort((a, b) => b.c.total - a.c.total || a.i - b.i)
-		.map(({ c }) => c);
-};
+const cardsIn = (col: string) => state.value?.cards.filter((c) => c.col === col) ?? [];
+const stacks = (col: string) => stacksIn(state.value?.cards ?? [], col, sortedCols.value.has(col) && state.value?.phase !== "writing");
+
+// Grouping: drag a card onto another card in the same feedback column (or use its "Stack onto…" picker).
+const canStack = (col: string) => state.value?.phase === "revealed" && col !== "action";
+const targetsFor = (card: Card, list: Stack[]) =>
+	canStack(card.col) ? list.filter((s) => s.id !== card.id && s.id !== card.parent).map((s) => ({ id: s.id, text: s.cards[0].text ?? "" })) : [];
+const dragging = ref<Card | null>(null);
+const dropOn = ref("");
+function onDragOver(e: DragEvent, s: Stack) {
+	const card = dragging.value;
+	if (!card || card.col !== s.col || card.id === s.id || card.parent === s.id) return;
+	e.preventDefault();
+	dropOn.value = s.id;
+}
+function onDrop(s: Stack) {
+	if (dragging.value && dropOn.value === s.id) send({ type: "stack", id: dragging.value.id, onto: s.id });
+	dragging.value = null;
+	dropOn.value = "";
+}
 const needsMood = computed(() => state.value && state.value.mood.mine === null && state.value.phase !== "locked");
 const moodMax = computed(() => Math.max(1, ...(state.value?.mood.counts ?? [])));
 // The page tints toward the mood: your own rating while writing (team results are still hidden),
@@ -520,20 +532,36 @@ const phaseLabel = computed(() =>
 					</button>
 				</h2>
 				<TransitionGroup name="reorder">
-				<NoteCard
-					v-for="card in cardsIn(col.key)"
-					:key="card.id"
-					:card="card"
-					:phase="state.phase"
-					:fresh="fresh.has(card.id)"
-					:flip-index="flipping.get(card.id) ?? null"
-					:floats="floats.filter((f) => f.card === card.id)"
-					@react="(emoji) => send({ type: 'react', id: card.id, emoji })"
-					@comment="(text) => send({ type: 'comment', id: card.id, text })"
-					@uncomment="(id) => send({ type: 'uncomment', id })"
-					@edit="(text) => send({ type: 'edit', id: card.id, text })"
-					@remove="send({ type: 'delete', id: card.id })"
-				/>
+				<div
+					v-for="st in stacks(col.key)"
+					:key="st.id"
+					:class="{ stack: st.cards.length > 1, 'drop-on': dropOn === st.id }"
+					@dragover="onDragOver($event, st)"
+					@dragleave="dropOn === st.id && (dropOn = '')"
+					@drop.prevent="onDrop(st)"
+				>
+					<span v-if="st.cards.length > 1" class="stack-tag">{{ st.cards.length }} cards<template v-if="st.total"> · {{ st.total }} reaction{{ st.total === 1 ? "" : "s" }}</template></span>
+					<NoteCard
+						v-for="card in st.cards"
+						:key="card.id"
+						:card="card"
+						:phase="state.phase"
+						:fresh="fresh.has(card.id)"
+						:flip-index="flipping.get(card.id) ?? null"
+						:floats="floats.filter((f) => f.card === card.id)"
+						:targets="targetsFor(card, stacks(col.key))"
+						:stacked="card.id !== st.id"
+						@dragstart="(e: DragEvent) => { dragging = card; e.dataTransfer?.setData('text/plain', card.id); }"
+						@dragend="dragging = null; dropOn = ''"
+						@react="(emoji) => send({ type: 'react', id: card.id, emoji })"
+						@comment="(text) => send({ type: 'comment', id: card.id, text })"
+						@uncomment="(id) => send({ type: 'uncomment', id })"
+						@edit="(text) => send({ type: 'edit', id: card.id, text })"
+						@remove="send({ type: 'delete', id: card.id })"
+						@stack="(onto) => send({ type: 'stack', id: card.id, onto })"
+						@unstack="send({ type: 'unstack', id: card.id })"
+					/>
+				</div>
 				</TransitionGroup>
 				<form v-if="state.phase !== 'locked'" class="add" :class="{ saved: saved === col.key }" @submit.prevent="add(col.key)">
 					<input
@@ -1092,6 +1120,28 @@ header h1 {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+}
+/* A group of cards: a soft frame around them, tagged with the count. */
+.stack {
+	position: relative;
+	padding: 22px 8px 0;
+	margin-bottom: 12px;
+	border: 1.5px dashed var(--border);
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--surface) 45%, transparent);
+}
+.stack-tag {
+	position: absolute;
+	top: 3px;
+	left: 10px;
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--muted);
+}
+.drop-on {
+	outline: 2.5px dashed var(--accent);
+	outline-offset: 3px;
+	border-radius: 14px;
 }
 /* Cards glide to their new place when sorting reorders them. */
 .reorder-move {

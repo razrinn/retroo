@@ -3,20 +3,16 @@ import { domToBlob } from "modern-screenshot";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import Icon from "./Icon.vue";
 import ShareCard from "./ShareCard.vue";
-import { type BoardState, type Card, COLS, useFocusTrap } from "./lib";
+import { type BoardState, COLS, stackReactions, stacksIn, useFocusTrap } from "./lib";
 
 // The wrap-up: a live preview of the share image (exactly what gets copied, downloaded or shared),
 // plus a Markdown copy for Confluence or Notion.
 const props = defineProps<{ state: BoardState; code: string; doodle?: () => string | null }>();
 const emit = defineEmits<{ close: [] }>();
 
-const byReactions = (col: string) =>
-	props.state.cards
-		.filter((c) => c.col === col && c.text !== null)
-		.map((c, i) => ({ c, i }))
-		.sort((a, b) => b.c.total - a.c.total || a.i - b.i)
-		.map(({ c }) => c);
-const columns = computed(() => COLS.filter((c) => c.key !== "action").map((col) => ({ ...col, cards: byReactions(col.key) })));
+const columns = computed(() =>
+	COLS.filter((c) => c.key !== "action").map((col) => ({ ...col, stacks: stacksIn(props.state.cards, col.key, true).filter((s) => s.cards[0].text !== null) })),
+);
 const actions = computed(() => props.state.cards.filter((c) => c.col === "action"));
 const followUps = computed(() => ({
 	done: props.state.followUps.filter((f) => f.status === "done"),
@@ -28,7 +24,6 @@ const delta = computed(() =>
 	mood.value.average !== null && mood.value.previous !== null ? Math.round((mood.value.average - mood.value.previous) * 10) / 10 : null,
 );
 const date = new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
-const reactionsText = (c: Card) => c.reactions.map((r) => `${r.emoji} ${r.count}`).join(" ");
 
 const markdown = computed(() => {
 	const s = props.state;
@@ -39,8 +34,13 @@ const markdown = computed(() => {
 	}
 	for (const col of columns.value) {
 		lines.push(`## ${col.label}`);
-		if (!col.cards.length) lines.push("_Nothing here._");
-		for (const c of col.cards) lines.push(`- ${c.text}${c.total ? `  ${reactionsText(c)}` : ""}`);
+		if (!col.stacks.length) lines.push("_Nothing here._");
+		for (const st of col.stacks) {
+			// A group is one item: its first card, then the cards stacked with it nested underneath.
+			const [head, ...rest] = st.cards;
+			lines.push(`- ${head.text}${st.total ? `  ${stackReactions(st, " ")}` : ""}`);
+			for (const c of rest) lines.push(`  - ${c.text}`);
+		}
 		lines.push("");
 	}
 	lines.push("## Action items");

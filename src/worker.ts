@@ -16,7 +16,7 @@ type Phase = "writing" | "revealed" | "locked";
 type FollowUp = { source: string; text: string; carried: number };
 type CarryOver = { title: string; mood: number | null; items: FollowUp[] };
 type Stroke = { c: string; w: number; p: [number, number][] };
-type Msg = { type: string; stroke?: Stroke; id?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
+type Msg = { type: string; stroke?: Stroke; id?: string; onto?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 
@@ -136,6 +136,9 @@ export class Board extends DurableObject<Env> {
 		const cols = this.sql.exec<{ name: string }>("PRAGMA table_info(followups)").toArray().map((c) => c.name);
 		if (!cols.includes("source")) this.sql.exec("ALTER TABLE followups ADD COLUMN source TEXT");
 		this.sql.exec("CREATE UNIQUE INDEX IF NOT EXISTS followups_source ON followups (source)");
+		// Grouping: a stacked card points at the card it sits under (one level deep, same column).
+		const cardCols = this.sql.exec<{ name: string }>("PRAGMA table_info(cards)").toArray().map((c) => c.name);
+		if (!cardCols.includes("parent")) this.sql.exec("ALTER TABLE cards ADD COLUMN parent TEXT");
 	}
 
 	meta(key: string) {
@@ -295,6 +298,22 @@ export class Board extends DurableObject<Env> {
 				}
 				break;
 			}
+			case "stack": {
+				// Drop a card (and anything stacked under it) onto another card's stack, in the same feedback column.
+				const find = (id: unknown) =>
+					this.sql.exec<{ id: string; col: string; parent: string | null }>("SELECT id, col, parent FROM cards WHERE id = ?", String(id)).toArray()[0];
+				const card = find(msg.id);
+				const target = find(msg.onto);
+				if (phase !== "revealed" || !card || !target || card.col !== target.col || card.col === "action") return;
+				const root = target.parent ?? target.id;
+				if (root === card.id || card.parent === root) return;
+				this.sql.exec("UPDATE cards SET parent = ? WHERE id = ? OR parent = ?", root, card.id, card.id);
+				break;
+			}
+			case "unstack":
+				if (phase !== "revealed") return;
+				this.sql.exec("UPDATE cards SET parent = NULL WHERE id = ?", String(msg.id));
+				break;
 			case "comment": {
 				// Comments need a card you can see: any card once revealed, action items (never hidden) any time.
 				const col = cardCol(msg.id);
@@ -422,8 +441,8 @@ export class Board extends DurableObject<Env> {
 		const counts = [1, 2, 3, 4, 5].map((v) => moods.filter((m) => m.value === v).length);
 		const previousMood = this.meta("previous_mood");
 		const cards = this.sql
-			.exec<{ id: string; col: string; text: string; author: string; name: string }>(
-				`SELECT c.id, c.col, c.text, c.author, COALESCE(p.name, 'Anonymous') AS name
+			.exec<{ id: string; col: string; text: string; author: string; name: string; parent: string | null }>(
+				`SELECT c.id, c.col, c.text, c.author, c.parent, COALESCE(p.name, 'Anonymous') AS name
 				FROM cards c LEFT JOIN people p ON p.id = c.author ORDER BY c.created_at`,
 			)
 			.toArray();

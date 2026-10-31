@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
-import { COLS, type Card, useFocusTrap } from "./lib";
+import { COLS, type Card, type Stack, stacksIn, useFocusTrap } from "./lib";
 
 // Only the presenter's screen changes; everyone else keeps the normal board and follows the screen share.
 const props = defineProps<{ cards: Card[] }>();
@@ -11,42 +11,42 @@ const emit = defineEmits<{ close: []; addAction: [text: string] }>();
 // The order is fixed when presenting starts and your place is kept by card, so reactions or new cards
 // never change what's on screen. Cards written meanwhile join the end of their column, tagged "New".
 const PRESENTED = ["well", "improve"];
-const shown = (c: Card) => PRESENTED.includes(c.col) && c.text !== null;
-const order = ref(
-	PRESENTED.flatMap((col) =>
-		props.cards
-			.filter((c) => c.col === col && shown(c))
-			.map((c, i) => ({ c, i }))
-			.sort((a, b) => b.c.total - a.c.total || a.i - b.i)
-			.map(({ c }) => c.id),
-	),
-);
+// One step per stack (a grouped set of cards, or a lone card).
+const allStacks = (cards: Card[], byReactions = false) =>
+	PRESENTED.flatMap((col) => stacksIn(cards, col, byReactions).filter((s) => s.cards[0].text !== null));
+const order = ref(allStacks(props.cards, true).map((s) => s.id));
+const known = new Set(props.cards.map((c) => c.id));
 const added = ref(new Set<string>());
 watch(
 	() => props.cards,
 	(cards) => {
 		const next = [...order.value];
-		for (const c of cards) {
-			if (!shown(c) || next.includes(c.id)) continue;
-			// After the last card of the same column, or before the next column's cards.
-			const col = PRESENTED.indexOf(c.col);
-			const byId = new Map(cards.map((x) => [x.id, x]));
+		const byId = new Map(cards.map((x) => [x.id, x]));
+		for (const s of allStacks(cards)) {
+			if (next.includes(s.id)) continue;
+			// After the last stack of the same column, or before the next column's stacks.
+			const col = PRESENTED.indexOf(s.col);
 			let at = next.length;
 			for (let i = next.length - 1; i >= 0; i--) {
 				const other = PRESENTED.indexOf(byId.get(next[i])?.col ?? "");
 				if (other <= col) break;
 				at = i;
 			}
-			next.splice(at, 0, c.id);
-			added.value = new Set([...added.value, c.id]);
+			next.splice(at, 0, s.id);
+			// Only cards written during presenting are "New"; one that was just unstacked isn't.
+			if (!known.has(s.id)) added.value = new Set([...added.value, s.id]);
 		}
 		order.value = next;
 	},
 	{ deep: true },
 );
-const items = computed(() => order.value.map((id) => props.cards.find((c) => c.id === id)).filter((c): c is Card => !!c));
+const items = computed(() => {
+	const stacks = allStacks(props.cards);
+	return order.value.map((id) => stacks.find((s) => s.id === id)).filter((s): s is Stack => !!s);
+});
+// Your place is kept by card, so if the current card gets stacked under another, you stay on that stack.
 const currentId = ref(order.value[0] ?? "");
-const current = computed(() => items.value.find((c) => c.id === currentId.value) ?? items.value[0]);
+const current = computed(() => items.value.find((s) => s.cards.some((c) => c.id === currentId.value)) ?? items.value[0]);
 const index = computed(() => Math.max(0, items.value.indexOf(current.value!)));
 const position = computed(() => {
 	const inCol = items.value.filter((c) => c.col === current.value?.col);
@@ -96,16 +96,18 @@ function add() {
 						<span v-if="added.has(current.id)" class="new">New</span>
 					</p>
 					<Transition name="zoom" mode="out-in">
-						<article :key="current.id" class="big" :class="`note-${current.col}`">
-							<p>{{ current.text }}</p>
-							<footer>
-								<span v-for="r in current.reactions" :key="r.emoji" class="r">{{ r.emoji }} {{ r.count }}</span>
-								<span class="spacer" />
-							</footer>
-							<ul v-if="current.comments.length" class="comments">
-								<li v-for="m in current.comments" :key="m.id"><strong>{{ m.name }}</strong> {{ m.text }}</li>
-							</ul>
-						</article>
+						<div :key="current.id" class="group">
+							<article v-for="card in current.cards" :key="card.id" class="big" :class="[`note-${card.col}`, { sub: card.id !== current.id }]">
+								<p>{{ card.text }}</p>
+								<footer>
+									<span v-for="r in card.reactions" :key="r.emoji" class="r">{{ r.emoji }} {{ r.count }}</span>
+									<span class="spacer" />
+								</footer>
+								<ul v-if="card.comments.length" class="comments">
+									<li v-for="m in card.comments" :key="m.id"><strong>{{ m.name }}</strong> {{ m.text }}</li>
+								</ul>
+							</article>
+						</div>
 					</Transition>
 				</div>
 				<button class="nav" aria-label="Next card" :disabled="index >= items.length - 1" @click="go(1)">→</button>
@@ -171,6 +173,22 @@ header {
 	width: 52px;
 	height: 52px;
 	border-radius: 50%;
+}
+.group {
+	display: grid;
+	gap: 14px;
+	max-height: calc(100vh - 160px);
+	overflow-y: auto;
+	padding: 8px;
+}
+/* Cards grouped under the first one: same note, a size down. */
+.big.sub {
+	padding: 18px 28px 12px;
+	rotate: 0.6deg;
+}
+.big.sub p {
+	font-size: clamp(17px, 2.2vw, 23px);
+	margin-bottom: 10px;
 }
 .big {
 	border-radius: 6px 6px 28px 6px;

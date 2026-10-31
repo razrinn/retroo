@@ -9,7 +9,7 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 ## Features
 
 - **Live or hidden:** cards appear as they're written (default), or stay face-down until a Reveal.
-- **Reactions and comments** on every card.
+- **Reactions and comments** on every card; drag similar cards together to group them.
 - **Team mood** each sprint, compared with the last one.
 - **Action items carry over** to the next sprint until they're done.
 - **Summary** at the end, copyable as Markdown for Slack, Confluence or Notion.

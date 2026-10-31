@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUpdated, ref } from "vue";
 import ConfirmButton from "./ConfirmButton.vue";
+import Icon from "./Icon.vue";
 import { type Card, type Phase, REACTIONS, hash, reducedMotion, useDismiss } from "./lib";
 
 const props = defineProps<{
@@ -9,8 +10,20 @@ const props = defineProps<{
 	fresh: boolean;
 	flipIndex: number | null;
 	floats?: { id: number; emoji: string }[];
+	// Grouping: other stacks in the column this card can join (empty = can't stack), and whether it sits under another card.
+	targets?: { id: string; text: string }[];
+	stacked?: boolean;
 }>();
-const emit = defineEmits<{ react: [emoji: string]; edit: [text: string]; remove: []; comment: [text: string]; uncomment: [id: string] }>();
+const emit = defineEmits<{
+	react: [emoji: string];
+	edit: [text: string];
+	remove: [];
+	comment: [text: string];
+	uncomment: [id: string];
+	stack: [onto: string];
+	unstack: [];
+}>();
+const short = (text: string) => (text.length > 40 ? `${text.slice(0, 40)}…` : text);
 
 const picking = ref(false);
 const pickerEl = ref<HTMLElement>();
@@ -69,6 +82,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 	<article
 		class="note"
 		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null, raised: picking }]"
+		:draggable="!!targets?.length && !editing"
 		:style="{ rotate: tilt, animationDelay: delay, '--rx': `${lean.x}deg`, '--ry': `${lean.y}deg` }"
 		@pointermove="onPointerMove"
 		@pointerleave="lean = { x: 0, y: 0 }"
@@ -100,6 +114,17 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 					<button v-if="!editing" class="ghost small" @click="startEdit">Edit</button>
 					<ConfirmButton v-if="phase === 'writing'" ask="Delete?" yes="Delete" danger class="ghost small" @confirm="emit('remove')">Delete</ConfirmButton>
 				</template>
+				<button v-if="stacked && phase === 'revealed'" class="ghost small stack-btn" title="Unstack" aria-label="Take this card out of the stack" @click="emit('unstack')">
+					<Icon name="unstack" />
+				</button>
+				<!-- Same as dragging onto another card, for keyboards and phones: a native picker behind the icon. -->
+				<label v-else-if="targets?.length" class="ghost small stack-btn" title="Stack onto…">
+					<Icon name="stack" />
+					<select aria-label="Stack onto another card" @change="emit('stack', ($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
+						<option value="" disabled selected>Stack onto…</option>
+						<option v-for="t in targets" :key="t.id" :value="t.id">{{ short(t.text) }}</option>
+					</select>
+				</label>
 			</footer>
 			<div v-if="phase !== 'writing' || card.comments.length || canComment" class="social">
 				<template v-if="phase !== 'writing'">
@@ -244,6 +269,30 @@ footer {
 }
 footer button.ghost {
 	color: var(--tag);
+}
+.stack-btn {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	padding: 2px 4px;
+	color: var(--tag);
+	border-radius: 6px;
+	cursor: pointer;
+}
+.stack-btn:hover {
+	background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.stack-btn select {
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+.stack-btn:has(select:focus-visible) {
+	outline: 2px solid var(--accent);
+}
+.note[draggable="true"] {
+	cursor: grab;
 }
 textarea {
 	width: 100%;

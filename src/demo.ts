@@ -13,7 +13,7 @@ type Data = {
 	previousMood: number;
 	timerEnd: number | null;
 	people: Record<string, string>;
-	cards: { id: string; col: string; text: string; author: string; at: number }[];
+	cards: { id: string; col: string; text: string; author: string; at: number; parent?: string | null }[];
 	reactions: { card: string; person: string; emoji: string }[];
 	comments: { id: string; card: string; author: string; text: string; at: number }[];
 	followUps: { id: string; text: string; carried: number; status: "open" | "done" | "dropped" }[];
@@ -111,6 +111,7 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 					text: hidden ? null : c.text,
 					name: "", // cards are anonymous, like on real boards
 					mine,
+					parent: c.parent ?? null,
 					reactions,
 					total: reactions.reduce((n, r) => n + r.count, 0),
 					comments: hidden
@@ -151,6 +152,18 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 				if (!same) data.reactions.push({ card: card.id, person: me, emoji: msg.emoji });
 				break;
 			}
+			case "stack": {
+				const target = data.cards.find((c) => c.id === msg.onto);
+				if (phase !== "revealed" || !card || !target || card.col !== target.col || card.col === "action") return;
+				const root = target.parent ?? target.id;
+				if (root === card.id || card.parent === root) return;
+				for (const c of data.cards) if (c === card || c.parent === card.id) c.parent = root;
+				break;
+			}
+			case "unstack":
+				if (phase !== "revealed" || !card) return;
+				card.parent = null;
+				break;
 			case "comment":
 				if (phase === "locked" || !card || !text || (phase === "writing" && card.col !== "action")) return;
 				data.comments.push({ id: id(), card: card.id, author: me, text: text.slice(0, 300), at: Date.now() });

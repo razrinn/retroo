@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import Mascot from "./Mascot.vue";
-import { type BoardState, type Card, moodTint } from "./lib";
+import { type BoardState, moodTint, stackReactions, stacksIn } from "./lib";
 
 // The 1200×675 picture behind "Share image" in the Summary. Rendered off-screen and turned into a PNG
 // in the browser (modern-screenshot); nothing here is ever shown on the page itself.
 const props = defineProps<{ state: BoardState; doodle: string | null }>();
 
-const top = (col: string) =>
-	props.state.cards
-		.filter((c) => c.col === col && c.text !== null)
-		.map((c, i) => ({ c, i }))
-		.sort((a, b) => b.c.total - a.c.total || a.i - b.i)
-		.slice(0, 3)
-		.map(({ c }) => c);
+const top = (col: string) => stacksIn(props.state.cards, col, true).filter((s) => s.cards[0].text !== null).slice(0, 3);
 const well = computed(() => top("well"));
 const improve = computed(() => top("improve"));
 const actions = computed(() => props.state.cards.filter((c) => c.col === "action").slice(0, 6));
@@ -28,7 +22,6 @@ const last = computed(() => ({
 }));
 const date = new Date().toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 const tint = computed(() => (mood.value.average !== null ? moodTint(mood.value.average) : "#f6f3ec"));
-const reactions = (c: Card) => c.reactions.map((r) => `${r.emoji} ${r.count}`).join("  ");
 </script>
 
 <template>
@@ -52,9 +45,9 @@ const reactions = (c: Card) => c.reactions.map((r) => `${r.emoji} ${r.count}`).j
 			<section v-for="col in [{ key: 'well', label: 'Went well', cards: well }, { key: 'improve', label: 'To improve', cards: improve }]" :key="col.key" :class="col.key">
 				<h2>{{ col.label }}</h2>
 				<p v-if="!col.cards.length" class="none">Nothing here</p>
-				<div v-for="c in col.cards" :key="c.id" class="note">
-					<span class="text">{{ c.text }}</span>
-					<span v-if="c.total" class="reacts">{{ reactions(c) }}</span>
+				<div v-for="s in col.cards" :key="s.id" class="note">
+					<span class="text">{{ s.cards[0].text }}<span v-if="s.cards.length > 1" class="more"> +{{ s.cards.length - 1 }} similar</span></span>
+					<span v-if="s.total" class="reacts">{{ stackReactions(s) }}</span>
 				</div>
 			</section>
 		</div>
@@ -161,6 +154,10 @@ h2 {
 .improve .note {
 	background: #ffe3d6;
 	color: #4a1b0c;
+}
+.more {
+	font-weight: 500;
+	opacity: 0.6;
 }
 .text {
 	flex: 1;

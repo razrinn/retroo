@@ -373,3 +373,31 @@ test("unknown boards are 404", async () => {
 	await assert.rejects(join("AAAA-BBBB", "alice-0005"));
 	assert.equal((await post("/api/boards/AAAA-BBBB/lock", { password: PASSWORD, locked: true })).status, 404);
 });
+
+test("stacking groups cards in one column, only while cards are visible", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0009");
+	await a.send({ type: "add", col: "well", text: "one" });
+	await a.send({ type: "add", col: "well", text: "two" });
+	await a.send({ type: "add", col: "well", text: "three" });
+	await a.send({ type: "add", col: "improve", text: "other column" });
+	const [one, two, three, other] = a.s.cards;
+	await a.send({ type: "stack", id: two.id, onto: one.id }); // still writing: ignored
+	assert.equal(a.s.cards[1].parent, null);
+	await a.send({ type: "reveal" });
+	await a.send({ type: "stack", id: two.id, onto: one.id });
+	await a.send({ type: "stack", id: other.id, onto: one.id }); // different column: ignored
+	assert.equal(a.s.cards[1].parent, one.id);
+	assert.equal(a.s.cards[3].parent, null);
+	// Dropping a stack's head onto a card in that stack is a no-op; dropping it elsewhere moves the whole stack.
+	await a.send({ type: "stack", id: one.id, onto: two.id });
+	assert.equal(a.s.cards[0].parent, null);
+	await a.send({ type: "stack", id: one.id, onto: three.id });
+	assert.deepEqual(
+		a.s.cards.slice(0, 3).map((c) => c.parent),
+		[three.id, three.id, null],
+	);
+	await a.send({ type: "unstack", id: two.id });
+	assert.equal(a.s.cards[1].parent, null);
+	a.close();
+});

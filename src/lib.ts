@@ -12,7 +12,10 @@ export type Card = {
 	reactions: Reaction[];
 	total: number;
 	comments: Comment[];
+	parent: string | null; // the card this one is stacked under, if grouped
 };
+// A card plus the cards stacked under it (a lone card is a stack of one); total adds up their reactions.
+export type Stack = { id: string; col: string; cards: Card[]; total: number };
 export type FollowUp = { id: string; text: string; carried: number; status: "open" | "done" | "dropped" };
 export type Mood = { mine: number | null; rated: number; people: number; counts: number[] | null; average: number | null; previous: number | null };
 export type BoardState = {
@@ -27,6 +30,26 @@ export type BoardState = {
 	mood: Mood;
 	cards: Card[];
 };
+// Stacks in a column, in writing order; byReactions puts the most-reacted first (ties keep writing order).
+export function stacksIn(cards: Card[], col: string, byReactions = false): Stack[] {
+	const inCol = cards.filter((c) => c.col === col);
+	const heads = inCol.filter((c) => !c.parent || !inCol.some((h) => h.id === c.parent));
+	const stacks = heads.map((h) => {
+		const all = [h, ...inCol.filter((c) => c.parent === h.id)];
+		return { id: h.id, col, cards: all, total: all.reduce((n, c) => n + c.total, 0) };
+	});
+	if (!byReactions) return stacks;
+	return stacks
+		.map((s, i) => ({ s, i }))
+		.sort((a, b) => b.s.total - a.s.total || a.i - b.i)
+		.map(({ s }) => s);
+}
+// "👍 3  🔥 2" for a whole stack, emojis in the fixed order.
+export const stackReactions = (s: Stack, sep = "  ") =>
+	REACTIONS.map((emoji) => [emoji, s.cards.reduce((n, c) => n + (c.reactions.find((r) => r.emoji === emoji)?.count ?? 0), 0)] as const)
+		.filter(([, n]) => n > 0)
+		.map(([e, n]) => `${e} ${n}`)
+		.join(sep);
 export type ListedBoard = { code: string; title: string; created_at: number; mood: number | null };
 
 export const COLS = [
