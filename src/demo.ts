@@ -217,7 +217,9 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 				if (!pool.length) roster.forEach((m) => (m.done = false)), (pool = roster);
 				const winner = pool[Math.floor(Math.random() * pool.length)].name;
 				const shows = SHOWS.filter((x) => x !== data.lastShow);
-				const show = shows[Math.floor(Math.random() * shows.length)];
+				// /demo?show=cars plays that show, to preview each one.
+				const asked = new URLSearchParams(location.search).get("show") as (typeof SHOWS)[number] | null;
+				const show = asked && SHOWS.includes(asked) ? asked : shows[Math.floor(Math.random() * shows.length)];
 				roster.forEach((m) => m.name === winner && (m.done = true));
 				data.mc = winner;
 				data.lastShow = show;

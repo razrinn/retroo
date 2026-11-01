@@ -5,6 +5,7 @@ import Mascot from "./Mascot.vue";
 import { type BoardState, confetti, reducedMotion, useFocusTrap } from "./lib";
 import { type Pick } from "./shows";
 import { sounds } from "./sound";
+import Race from "./shows/Race.vue";
 import Wheel from "./shows/Wheel.vue";
 
 // Next MC: the team roster and a pick. A pick opens this on every screen and plays the same show,
@@ -12,7 +13,7 @@ import Wheel from "./shows/Wheel.vue";
 const props = defineProps<{ team: BoardState["team"]; locked: boolean; pick: Pick | null }>();
 const emit = defineEmits<{ send: [msg: object]; close: [] }>();
 
-const SHOW_VIEWS: Partial<Record<Pick["show"], Component>> = { wheel: Wheel };
+const SHOW_VIEWS: Partial<Record<Pick["show"], Component>> = { wheel: Wheel, cars: Race, horses: Race };
 const view = computed(() => (props.pick ? (SHOW_VIEWS[props.pick.show] ?? Wheel) : null));
 
 // playing → the show; revealed → winner card; otherwise the roster.
@@ -56,7 +57,7 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 			</header>
 
 			<div v-if="pick && playing" class="stage">
-				<component :is="view" :names="pick.names" :winner="pick.winner" :seed="pick.seed" @done="reveal" />
+				<component :is="view" :names="pick.names" :winner="pick.winner" :seed="pick.seed" :kind="pick.show" @done="reveal" />
 			</div>
 
 			<div v-else-if="pick" class="winner" role="status">
