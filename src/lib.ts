@@ -33,6 +33,13 @@ export type BoardState = {
 };
 // Someone's Stickie in the plaza: their last spot (0..1 of the plaza's width and height), and whether they're here now.
 export type PlazaPerson = { id: string; name: string; x: number; y: number; here: boolean; me: boolean };
+// The plaza room in perspective: the floor is a trapezoid from the back wall (y 0.32, x 0.1375..0.8625) to the
+// front edge (full width). Keeps a walk target on the floor, with room for the name below and the bubble above.
+export function onFloor(x: number, y: number): [number, number] {
+	y = Math.min(0.93, Math.max(0.4, y));
+	const edge = 0.1375 * ((1 - y) / 0.68) + 0.03;
+	return [Math.round(Math.min(1 - edge, Math.max(edge, x)) * 1000) / 1000, Math.round(y * 1000) / 1000];
+}
 export type PlazaPhoto = { people: PlazaPerson[]; emotes: Record<string, { emoji: string; n: number }> };
 // Stacks in a column, in writing order; byReactions puts the most-reacted first (ties keep writing order).
 export function stacksIn(cards: Card[], col: string, byReactions = false): Stack[] {

@@ -61,7 +61,7 @@ const tint = computed(() => (mood.value.average !== null ? moodTint(mood.value.a
 				<p v-if="moreActions > 0" class="none">+{{ moreActions }} more</p>
 				<p v-if="state.followUps.length" class="last">Last sprint: {{ last.done }} done · {{ last.open }} carried over</p>
 			</section>
-			<div v-if="photo?.people.length" class="photo"><PlazaScene :people="photo.people" :emotes="photo.emotes" :size="60" /></div>
+			<div v-if="photo?.people.length" class="photo"><PlazaScene :people="photo.people" :emotes="photo.emotes" :size="46" /></div>
 		</div>
 
 		<footer>made with <strong>retroo</strong></footer>

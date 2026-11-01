@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import PlazaScene, { type Shown } from "./PlazaScene.vue";
-import { type PlazaPerson, REACTIONS, reducedMotion } from "./lib";
+import { type PlazaPerson, REACTIONS, onFloor, reducedMotion } from "./lib";
 
 // The plaza: everyone's Stickie in a shared little office. Tap to walk there, tap an emoji to say it.
 // Only tap targets travel over the socket; every browser animates the walk itself.
@@ -110,13 +110,10 @@ const shown = computed<Shown[]>(() =>
 	}),
 );
 
-// Feet stay inside the room with space for the name below and the bubble above.
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 function go(x: number, y: number) {
 	const id = me.value?.id;
 	if (!id) return;
-	x = Math.round(clamp(x, 0.05, 0.95) * 1000) / 1000;
-	y = Math.round(clamp(y, 0.28, 0.9) * 1000) / 1000;
+	[x, y] = onFloor(x, y);
 	myWalkAt = Date.now();
 	walkTo(id, x, y);
 	emit("send", { type: "walk", x, y });

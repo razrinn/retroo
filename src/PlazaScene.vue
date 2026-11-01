@@ -7,58 +7,141 @@ import { type PlazaPerson, hash } from "./lib";
 export type Shown = PlazaPerson & { left?: boolean; walking?: boolean; sitting?: boolean; bump?: boolean };
 defineProps<{ people: Shown[]; emotes: Record<string, { emoji: string; n: number }>; size: number }>();
 
-// The office, in plaza units (160 × 100, the plaza's 16:10). The back wall sits above where anyone can walk.
-const PLANKS = Array.from({ length: 12 }, (_, i) => 27 + i * 6.2);
-const SEAMS = PLANKS.flatMap((y, i) => [0, 1, 2, 3].map((k) => [((i % 2) * 20 + k * 40 + 12) % 160, y]));
+// The office in plaza units (160 × 100, the plaza's 16:10), drawn in one-point perspective: the back wall
+// spans x 22..138 down to y 32, the side walls and floor open out to the front edge (onFloor in lib.ts).
+const BACK = 32;
+const at = (y: number) => (22 * (100 - y)) / 68; // left edge of the floor at depth y
+// Floor boards run toward the back wall; cross seams get closer together further away.
+const BOARDS = Array.from({ length: 11 }, (_, i) => `M${22 + (116 * i) / 10} ${BACK}L${(160 * i) / 10} 100`);
+const ROWS = [0.06, 0.14, 0.24, 0.37, 0.52, 0.7, 0.9].map((t) => BACK + 68 * t).map((y) => `M${at(y)} ${y}H${160 - at(y)}`);
+
+// Furniture stands on the floor like people do: placed by its base point and layered by depth, so a Stickie
+// can walk behind a desk or in front of the sofa. x, y: base point; w: width; all as fractions of the plaza.
+const PROPS = [
+	{ kind: "shelf", x: 0.21, y: 0.4, w: 0.13 },
+	{ kind: "cooler", x: 0.8, y: 0.4, w: 0.045 },
+	{ kind: "plant", x: 0.88, y: 0.42, w: 0.055 },
+	{ kind: "desk", x: 0.28, y: 0.58, w: 0.19 },
+	{ kind: "chair", x: 0.28, y: 0.66, w: 0.06 },
+	{ kind: "desk", x: 0.72, y: 0.58, w: 0.19 },
+	{ kind: "chair", x: 0.72, y: 0.66, w: 0.06 },
+	{ kind: "table", x: 0.5, y: 0.8, w: 0.15 },
+	{ kind: "sofa", x: 0.17, y: 0.97, w: 0.22 },
+	{ kind: "plant", x: 0.93, y: 0.99, w: 0.08 },
+];
+const BOOKS = ["#d85a30", "#ef9f27", "#1d9e75", "#7f77dd", "#378add", "#f5c4b3", "#5f5e5a"];
 </script>
 
 <template>
 	<div class="scene">
 		<svg class="ground" viewBox="0 0 160 100" preserveAspectRatio="none" aria-hidden="true">
-			<!-- Wooden floor. -->
-			<rect width="160" height="100" fill="#efdfc3" />
-			<path v-for="y in PLANKS" :key="`p${y}`" :d="`M0 ${y}H160`" stroke="#e2cca6" stroke-width="0.5" />
-			<path v-for="([x, y], i) in SEAMS" :key="`s${i}`" :d="`M${x} ${y}v6.2`" stroke="#e2cca6" stroke-width="0.5" />
-			<!-- Rug in the middle. -->
-			<rect x="40" y="46" width="80" height="38" rx="6" fill="#e8e5ff" stroke="#cecbf6" stroke-width="1.2" />
-			<rect x="44" y="50" width="72" height="30" rx="4" fill="none" stroke="#afa9ec" stroke-width="0.5" stroke-dasharray="2 1.5" />
-			<!-- Back wall. -->
-			<rect width="160" height="26" fill="#f6f1e7" />
-			<rect y="25" width="160" height="2" fill="#d9cbb0" />
-			<!-- Window with a cloud. -->
-			<rect x="8" y="4" width="28" height="15" rx="1" fill="#cfe9f7" stroke="#c9b08a" stroke-width="1.2" />
-			<path d="M22 4v15M8 11.5h28" stroke="#c9b08a" stroke-width="0.8" />
-			<path d="M11 9a2 2 0 0 1 3.5-1.2a2.4 2.4 0 0 1 4.3 1.2z" fill="#fffdf8" />
-			<!-- Plant between the window and the whiteboard. -->
-			<ellipse cx="44" cy="15" rx="2.2" ry="5" fill="#5dcaa5" transform="rotate(-25 44 15)" />
-			<ellipse cx="47" cy="14" rx="2.2" ry="5.5" fill="#1d9e75" transform="rotate(15 47 14)" />
-			<ellipse cx="45.5" cy="12.5" rx="2" ry="5" fill="#9fe1cb" />
-			<path d="M42 19h7l-1 8h-5z" fill="#e08b5f" stroke="#993c1d" stroke-width="0.6" stroke-linejoin="round" />
-			<!-- The whiteboard, covered in sticky notes. -->
-			<rect x="56" y="3" width="50" height="17" rx="1" fill="#fffdf8" stroke="#b4b2a9" stroke-width="1" />
-			<rect x="60" y="6" width="6" height="5" fill="#9fe1cb" transform="rotate(-4 63 8.5)" />
-			<rect x="68" y="7" width="6" height="5" fill="#9fe1cb" transform="rotate(3 71 9.5)" />
-			<rect x="79" y="6" width="6" height="5" fill="#fac775" transform="rotate(5 82 8.5)" />
-			<rect x="87" y="9" width="6" height="5" fill="#f5c4b3" transform="rotate(-3 90 11.5)" />
-			<rect x="97" y="6" width="6" height="5" fill="#cecbf6" transform="rotate(-6 100 8.5)" />
-			<path d="M60 15.5h10M79 16.5h12M96 13.5h7" stroke="#d3d1c7" stroke-width="0.6" stroke-linecap="round" />
-			<rect x="70" y="20" width="22" height="1.4" rx="0.5" fill="#b4b2a9" />
-			<!-- Clock. -->
-			<circle cx="118" cy="9" r="4.5" fill="#fffdf8" stroke="#5f5e5a" stroke-width="0.9" />
-			<path d="M118 9V6.3M118 9l1.8 1.2" stroke="#26215c" stroke-width="0.7" stroke-linecap="round" />
-			<!-- Coffee counter. -->
-			<rect x="130" y="16" width="27" height="11" fill="#c08a5a" stroke="#854f0b" stroke-width="0.7" />
-			<rect x="129" y="15" width="29" height="2" rx="0.6" fill="#d9a066" stroke="#854f0b" stroke-width="0.6" />
-			<rect x="134" y="7" width="9" height="8" rx="1" fill="#5f5e5a" />
-			<rect x="136" y="11" width="5" height="3" rx="0.5" fill="#2a2723" />
-			<path d="M148 11h4v4h-4zM152 12h1.2v2H152" fill="#fffdf8" stroke="#888780" stroke-width="0.5" />
-			<path d="M149.5 10q.6-1 0-2M151 10q.6-1 0-2" fill="none" stroke="#b4b2a9" stroke-width="0.4" stroke-linecap="round" />
-			<!-- Potted plants in the front corners. -->
-			<g v-for="x in [9, 151]" :key="`pl${x}`">
-				<ellipse :cx="x - 3" :cy="88" rx="2.6" ry="6" fill="#5dcaa5" :transform="`rotate(-25 ${x - 3} 88)`" />
-				<ellipse :cx="x + 3" :cy="88" rx="2.6" ry="6" fill="#1d9e75" :transform="`rotate(25 ${x + 3} 88)`" />
-				<ellipse :cx="x" :cy="86" rx="2.4" ry="6.5" fill="#9fe1cb" />
-				<path :d="`M${x - 5} 92h10l-1.5 8h-7z`" fill="#e08b5f" stroke="#993c1d" stroke-width="0.6" stroke-linejoin="round" />
+			<defs>
+				<linearGradient id="plaza-floor" x1="0" y1="0" x2="0" y2="1">
+					<stop offset="0" stop-color="#e6d2ae" />
+					<stop offset="1" stop-color="#f2e4ca" />
+				</linearGradient>
+			</defs>
+			<!-- Floor, side walls, back wall. -->
+			<polygon :points="`22,${BACK} 138,${BACK} 160,100 0,100`" fill="url(#plaza-floor)" />
+			<path v-for="(d, i) in [...BOARDS, ...ROWS]" :key="`b${i}`" :d="d" stroke="#d9c39c" stroke-width="0.35" />
+			<polygon :points="`0,0 22,0 22,${BACK} 0,100`" fill="#e9e0cf" />
+			<polygon :points="`160,0 138,0 138,${BACK} 160,100`" fill="#e9e0cf" />
+			<rect x="22" width="116" :height="BACK" fill="#f6f1e7" />
+			<path :d="`M22 ${BACK}H138M22 ${BACK}L0 100M138 ${BACK}L160 100`" stroke="#c9b08a" stroke-width="1.4" />
+			<path d="M22 0V32M138 0V32" stroke="#ddd2bd" stroke-width="0.6" />
+			<!-- Rug under the coffee table. -->
+			<ellipse cx="80" cy="76" rx="30" ry="9" fill="#e8e5ff" stroke="#cecbf6" stroke-width="1" />
+			<ellipse cx="80" cy="76" rx="26" ry="7.2" fill="none" stroke="#afa9ec" stroke-width="0.45" stroke-dasharray="2 1.5" />
+			<!-- Left wall: a door. Right wall: a window. Both drawn along the wall's slant. -->
+			<polygon points="6,24 14,14 14,48 6,74" fill="#c08a5a" stroke="#854f0b" stroke-width="0.6" stroke-linejoin="round" />
+			<circle cx="12.4" cy="46" r="0.8" fill="#fac775" />
+			<polygon points="146,12 154,14 154,36 146,30" fill="#cfe9f7" stroke="#c9b08a" stroke-width="0.9" stroke-linejoin="round" />
+			<path d="M150 13v20" stroke="#c9b08a" stroke-width="0.6" />
+			<!-- Back wall: window with blinds, whiteboard of sticky notes, frame and clock. -->
+			<rect x="27" y="5" width="22" height="16" rx="0.8" fill="#cfe9f7" stroke="#c9b08a" stroke-width="1" />
+			<path d="M38 5v16" stroke="#c9b08a" stroke-width="0.7" />
+			<path v-for="i in 5" :key="`bl${i}`" :d="`M27.5 ${5 + i * 1.6}H48.5`" stroke="#fffdf8" stroke-width="0.9" />
+			<path d="M30 17a1.8 1.8 0 0 1 3.2-1a2.2 2.2 0 0 1 3.8 1z" fill="#fffdf8" />
+			<rect x="56" y="4" width="46" height="17" rx="1" fill="#fffdf8" stroke="#b4b2a9" stroke-width="1" />
+			<rect x="60" y="7" width="5.5" height="4.5" fill="#9fe1cb" transform="rotate(-4 63 9)" />
+			<rect x="67" y="8" width="5.5" height="4.5" fill="#9fe1cb" transform="rotate(3 70 10)" />
+			<rect x="76" y="7" width="5.5" height="4.5" fill="#fac775" transform="rotate(5 79 9)" />
+			<rect x="83" y="10" width="5.5" height="4.5" fill="#f5c4b3" transform="rotate(-3 86 12)" />
+			<rect x="93" y="7" width="5.5" height="4.5" fill="#cecbf6" transform="rotate(-6 96 9)" />
+			<path d="M60 16.5h9M76 17h11M92 14.5h7" stroke="#d3d1c7" stroke-width="0.6" stroke-linecap="round" />
+			<rect x="68" y="21" width="20" height="1.3" rx="0.5" fill="#b4b2a9" />
+			<rect x="108" y="6" width="10" height="8" fill="#fac775" stroke="#854f0b" stroke-width="0.8" />
+			<path d="M109.5 12.5l2.5-3 2 2 1.5-1.5 1.5 2.5z" fill="#1d9e75" />
+			<circle cx="128" cy="11" r="4.2" fill="#fffdf8" stroke="#5f5e5a" stroke-width="0.9" />
+			<path d="M128 11V8.4M128 11l1.7 1.1" stroke="#26215c" stroke-width="0.7" stroke-linecap="round" />
+			<!-- Pendant lamps. -->
+			<g v-for="x in [52, 108]" :key="`l${x}`">
+				<path :d="`M${x} 0V3`" stroke="#5f5e5a" stroke-width="0.4" />
+				<path :d="`M${x - 3} 5.5Q${x} 1.5 ${x + 3} 5.5Z`" fill="#26215c" />
+				<ellipse :cx="x" cy="5.7" rx="1.4" ry="0.5" fill="#fac775" />
+			</g>
+		</svg>
+		<svg
+			v-for="(f, i) in PROPS"
+			:key="`f${i}`"
+			class="prop"
+			:style="{ left: `${f.x * 100}%`, top: `${f.y * 100}%`, width: `${f.w * 100}%`, zIndex: Math.round(f.y * 100) }"
+			:viewBox="{ shelf: '0 0 24 30', cooler: '0 0 10 26', plant: '0 0 16 24', desk: '0 0 40 26', chair: '0 0 14 16', table: '0 0 30 15', sofa: '0 0 44 20' }[f.kind]"
+			aria-hidden="true"
+		>
+			<g v-if="f.kind === 'shelf'" stroke="#854f0b" stroke-width="0.8">
+				<rect x="1" y="1" width="22" height="28.5" fill="#c08a5a" />
+				<path d="M2 10H22M2 19.5H22" />
+				<rect v-for="(c, k) in BOOKS" :key="`a${k}`" :x="3 + k * 2.6" :y="k % 3 ? 3.5 : 4.5" width="2.2" :height="k % 3 ? 6.5 : 5.5" :fill="c" stroke-width="0.3" />
+				<rect v-for="(c, k) in BOOKS.slice(0, 5)" :key="`b${k}`" :x="4 + k * 2.8" y="13" width="2.4" height="6.5" :fill="BOOKS[(k + 3) % BOOKS.length]" stroke-width="0.3" />
+				<circle cx="18.5" cy="16.5" r="2.2" fill="#5dcaa5" stroke-width="0.3" />
+				<rect x="4" y="22" width="16" height="7" rx="0.6" fill="#d9a066" stroke-width="0.4" />
+			</g>
+			<g v-else-if="f.kind === 'cooler'" stroke="#888780" stroke-width="0.5">
+				<rect x="2.5" y="0.5" width="5" height="8" rx="2" fill="#a9d8ef" stroke="#85b7eb" />
+				<rect x="1" y="8.5" width="8" height="17" rx="1" fill="#fffdf8" />
+				<rect x="3.5" y="11" width="3" height="1.5" rx="0.4" fill="#378add" stroke="none" />
+			</g>
+			<g v-else-if="f.kind === 'plant'" stroke-linejoin="round">
+				<ellipse cx="4.5" cy="9" rx="3" ry="7" fill="#5dcaa5" transform="rotate(-25 4.5 9)" />
+				<ellipse cx="11.5" cy="9" rx="3" ry="7" fill="#1d9e75" transform="rotate(25 11.5 9)" />
+				<ellipse cx="8" cy="7.5" rx="2.8" ry="7.5" fill="#9fe1cb" />
+				<path d="M2.5 14.5h11l-1.6 9h-7.8z" fill="#e08b5f" stroke="#993c1d" stroke-width="0.6" />
+			</g>
+			<g v-else-if="f.kind === 'desk'" stroke="#854f0b" stroke-width="0.6" stroke-linejoin="round">
+				<rect x="11" y="0.5" width="18" height="11" rx="1" fill="#5f5e5a" stroke="#2a2723" />
+				<rect x="12.5" y="2" width="15" height="8" rx="0.5" fill="#9fd0f0" stroke="none" />
+				<path d="M14 5h7M14 7h10" stroke="#fffdf8" stroke-width="0.7" stroke-linecap="round" />
+				<rect x="18.5" y="11.5" width="3" height="2.5" fill="#5f5e5a" stroke="none" />
+				<polygon points="3,14 37,14 39,17 1,17" fill="#d9a066" />
+				<rect x="14" y="14.4" width="12" height="1.4" rx="0.3" fill="#fffdf8" stroke="#b4b2a9" stroke-width="0.3" />
+				<rect x="31" y="11.5" width="3" height="3" rx="0.6" fill="#f5c4b3" stroke="#993c1d" stroke-width="0.4" />
+				<rect x="1" y="17" width="38" height="2" fill="#c08a5a" />
+				<path d="M3 19v6.5M37 19v6.5" stroke-width="1.6" stroke-linecap="round" />
+				<rect x="26" y="19" width="9" height="6" fill="#c08a5a" />
+			</g>
+			<g v-else-if="f.kind === 'chair'" stroke="#26215c" stroke-width="0.6" stroke-linejoin="round">
+				<rect x="2" y="0.5" width="10" height="7" rx="2.5" fill="#7f77dd" />
+				<rect x="1" y="7" width="12" height="3" rx="1.4" fill="#afa9ec" />
+				<path d="M7 10v3M3 15.2l4-2.2l4 2.2" fill="none" stroke="#5f5e5a" stroke-width="0.9" stroke-linecap="round" />
+			</g>
+			<g v-else-if="f.kind === 'table'" stroke="#854f0b" stroke-width="0.6">
+				<path d="M13.5 7v6.5h3V7" fill="#c08a5a" />
+				<ellipse cx="15" cy="14" rx="5.5" ry="1" fill="#c08a5a" />
+				<ellipse cx="15" cy="5.5" rx="14" ry="4.5" fill="#d9a066" />
+				<rect x="8" y="2" width="3" height="3" rx="0.6" fill="#fffdf8" stroke="#888780" stroke-width="0.4" />
+				<rect x="18" y="3" width="3" height="3" rx="0.6" fill="#cecbf6" stroke="#534ab7" stroke-width="0.4" />
+				<ellipse cx="14.5" cy="5.5" rx="3.2" ry="1.2" fill="#fffdf8" stroke="#b4b2a9" stroke-width="0.3" />
+				<circle cx="13.6" cy="4.8" r="1" fill="#f0997b" stroke="none" />
+				<circle cx="15.6" cy="5" r="1" fill="#fac775" stroke="none" />
+			</g>
+			<g v-else-if="f.kind === 'sofa'" stroke="#534ab7" stroke-width="0.7" stroke-linejoin="round">
+				<rect x="4" y="1" width="36" height="10" rx="3" fill="#afa9ec" />
+				<rect x="4" y="9" width="36" height="7" rx="1.5" fill="#cecbf6" />
+				<path d="M22 9.5v6" />
+				<rect x="0.5" y="5" width="6" height="12" rx="2.5" fill="#afa9ec" />
+				<rect x="37.5" y="5" width="6" height="12" rx="2.5" fill="#afa9ec" />
+				<path d="M4 17v2.5M40 17v2.5" stroke="#26215c" stroke-width="1.2" stroke-linecap="round" />
 			</g>
 		</svg>
 		<div
@@ -88,6 +171,12 @@ const SEAMS = PLANKS.flatMap((y, i) => [0, 1, 2, 3].map((k) => [((i % 2) * 20 + 
 	inset: 0;
 	width: 100%;
 	height: 100%;
+}
+.prop {
+	position: absolute;
+	translate: -50% -100%;
+	overflow: visible;
+	pointer-events: none;
 }
 .who {
 	position: absolute;

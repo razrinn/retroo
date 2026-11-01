@@ -1,7 +1,7 @@
 // The /demo board: a stand-in for the Board Durable Object that runs in the browser and saves to
 // localStorage, so people can try retroo without a password or a server. It speaks the same messages
 // as the real WebSocket. Keep its rules in step with Board in src/worker.ts (the tests cover the real one).
-import { REACTIONS, load, save } from "./lib";
+import { REACTIONS, load, onFloor, save } from "./lib";
 
 const KEY = "retroo-demo-live"; // new key when the starting data changes, so old saved demos start fresh
 const COLS = ["well", "improve", "action"];
@@ -75,7 +75,10 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 		data = seed();
 	}
 	data.people[me] = name || "You";
-	const spot = () => ({ x: Math.round((0.1 + Math.random() * 0.8) * 1000) / 1000, y: Math.round((0.35 + Math.random() * 0.5) * 1000) / 1000 });
+	const spot = () => {
+		const [x, y] = onFloor(Math.random(), 0.4 + Math.random() * 0.5);
+		return { x, y };
+	};
 	data.spots ??= {};
 	for (const p of Object.keys(data.people)) data.spots[p] ??= spot();
 	const persist = () => save(KEY, JSON.stringify(data));
