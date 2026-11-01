@@ -32,6 +32,7 @@ const markdown = computed(() => {
 		const change = delta.value === null ? "" : ` (${delta.value > 0 ? "+" : ""}${delta.value} vs last sprint)`;
 		lines.push(`**Team mood:** ${mood.value.average.toFixed(1)} / 5${change}, ${mood.value.rated} rated`, "");
 	}
+	if (s.team?.mc) lines.push(`**Next MC:** ${s.team.mc}`, "");
 	for (const col of columns.value) {
 		lines.push(`## ${col.label}`);
 		if (!col.stacks.length) lines.push("_Nothing here._");

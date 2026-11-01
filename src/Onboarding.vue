@@ -19,7 +19,7 @@ const TOURS: Record<"join" | "run", Step[]> = {
 	run: [
 		{ scene: "share", title: "Share the code", body: "Send this code or link to your team. Anyone with it can join." },
 		{ scene: "guide", title: "Guide the session", body: "Start a timer for writing, Reveal when everyone's ready (the button glows), then Present to go through cards one by one." },
-		{ scene: "wrap", title: "Wrap up", body: "Lock the board when you're done. The Summary is ready to paste into Slack, Confluence or Notion." },
+		{ scene: "wrap", title: "Wrap up", body: "Pick next retro's MC with the crown button, then lock the board. The Summary is ready to paste into Slack, Confluence or Notion." },
 	],
 };
 // Live boards show cards as they're written, so the first steps read differently there.

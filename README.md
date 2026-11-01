@@ -15,6 +15,7 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 - **Summary** at the end, copyable as Markdown for Slack, Confluence or Notion.
 - **Mood trend** across sprints on Past boards.
 - **Anonymous cards**: nobody sees who wrote what; comments and reactions show names.
+- **Next MC picker**: a team roster that rotates across retros, revealed by one of ten random shows (wheel, races, claw machine…).
 - **Presenter view**, **shared timer**, **doodle wall** and **emoji rain**.
 - **Join with a code**; one shared password to create boards.
 

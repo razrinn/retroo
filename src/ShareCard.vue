@@ -63,7 +63,11 @@ const tint = computed(() => (mood.value.average !== null ? moodTint(mood.value.a
 			<img v-if="doodle" class="doodle" :src="doodle" alt="" />
 		</div>
 
-		<footer>made with <strong>retroo</strong></footer>
+		<footer>
+			<span v-if="state.team?.mc" class="mc">👑 Next MC: <strong>{{ state.team.mc }}</strong></span>
+			<span class="spacer" />
+			made with <strong>retroo</strong>
+		</footer>
 	</div>
 </template>
 
@@ -216,9 +220,19 @@ h2 {
 	box-shadow: 0 6px 14px -8px rgba(60, 45, 20, 0.35);
 }
 footer {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 	font-size: 15px;
 	color: #77716a;
-	text-align: right;
+}
+footer .spacer {
+	flex: 1;
+}
+.mc {
+	font-size: 17px;
+	font-weight: 700;
+	color: #26215c;
 }
 footer strong {
 	color: #534ab7;
