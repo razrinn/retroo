@@ -7,41 +7,58 @@ import { type PlazaPerson, hash } from "./lib";
 export type Shown = PlazaPerson & { left?: boolean; walking?: boolean; sitting?: boolean; bump?: boolean };
 defineProps<{ people: Shown[]; emotes: Record<string, { emoji: string; n: number }>; size: number }>();
 
-// The park, in plaza units (160 × 100, the plaza's 16:10). The tree line sits above where anyone can walk.
-const TUFTS = [[22, 46], [48, 38], [92, 48], [126, 44], [16, 64], [60, 86], [104, 92], [140, 74], [74, 34], [150, 52], [36, 90], [118, 62]];
-const TREES = [[6, 10, 11], [22, 7, 10], [40, 11, 12], [58, 6, 10], [77, 10, 12], [96, 7, 11], [114, 11, 10], [131, 6, 12], [150, 10, 11]];
-const FLOWERS = [
-	[10, 90, "#F0997B"], [15, 94, "#FAC775"], [8, 96, "#CECBF6"], [146, 88, "#CECBF6"], [152, 93, "#F0997B"],
-	[141, 94, "#FAC775"], [84, 40, "#F0997B"], [88, 43, "#FAC775"], [52, 58, "#CECBF6"], [112, 82, "#F0997B"],
-] as const;
+// The office, in plaza units (160 × 100, the plaza's 16:10). The back wall sits above where anyone can walk.
+const PLANKS = Array.from({ length: 12 }, (_, i) => 27 + i * 6.2);
+const SEAMS = PLANKS.flatMap((y, i) => [0, 1, 2, 3].map((k) => [((i % 2) * 20 + k * 40 + 12) % 160, y]));
 </script>
 
 <template>
 	<div class="scene">
 		<svg class="ground" viewBox="0 0 160 100" preserveAspectRatio="none" aria-hidden="true">
-			<rect width="160" height="100" fill="#d4ebc4" />
-			<!-- A winding path across the lawn. -->
-			<path d="M-6 80C36 62 66 96 108 72S150 50 166 56" fill="none" stroke="#e2d3b3" stroke-width="13" stroke-linecap="round" />
-			<path d="M-6 80C36 62 66 96 108 72S150 50 166 56" fill="none" stroke="#f3e9d2" stroke-width="10.5" stroke-linecap="round" />
-			<path v-for="([x, y], i) in TUFTS" :key="`t${i}`" :d="`M${x - 2} ${y}l1-2.5l1 2.5l1-3l1 3`" fill="none" stroke="#a9d394" stroke-width="0.7" stroke-linejoin="round" />
-			<!-- Pond and bench under the trees. -->
-			<ellipse cx="136" cy="29" rx="14" ry="6" fill="#a9d8ef" stroke="#85b7eb" stroke-width="1" />
-			<path d="M128 28q4-1.5 8 0M138 31q3-1 6 0" fill="none" stroke="#e6f5fc" stroke-width="0.8" stroke-linecap="round" />
-			<g stroke="#854f0b" stroke-width="0.8" stroke-linejoin="round">
-				<rect x="24" y="22" width="16" height="2.5" rx="0.8" fill="#d9a066" />
-				<rect x="23" y="26" width="18" height="2.5" rx="0.8" fill="#c08a5a" />
-				<path d="M25 28.5v3M39 28.5v3" fill="none" />
-			</g>
-			<!-- Tree line along the top. -->
-			<rect width="160" height="9" fill="#9fd09a" />
-			<g v-for="([x, y, r], i) in TREES" :key="`tr${i}`">
-				<rect :x="x - 1.2" :y="y + r * 0.5" width="2.4" :height="r * 0.75" rx="0.6" fill="#9c6b45" />
-				<circle :cx="x" :cy="y" :r="r" fill="#6fbf80" stroke="#0f6e56" stroke-width="0.8" />
-				<circle :cx="x - r * 0.35" :cy="y - r * 0.35" :r="r * 0.35" fill="#a6dcae" />
-			</g>
-			<g v-for="([x, y, c], i) in FLOWERS" :key="`f${i}`">
-				<circle :cx="x" :cy="y" r="1.5" :fill="c" />
-				<circle :cx="x" :cy="y" r="0.55" fill="#fffdf8" />
+			<!-- Wooden floor. -->
+			<rect width="160" height="100" fill="#efdfc3" />
+			<path v-for="y in PLANKS" :key="`p${y}`" :d="`M0 ${y}H160`" stroke="#e2cca6" stroke-width="0.5" />
+			<path v-for="([x, y], i) in SEAMS" :key="`s${i}`" :d="`M${x} ${y}v6.2`" stroke="#e2cca6" stroke-width="0.5" />
+			<!-- Rug in the middle. -->
+			<rect x="40" y="46" width="80" height="38" rx="6" fill="#e8e5ff" stroke="#cecbf6" stroke-width="1.2" />
+			<rect x="44" y="50" width="72" height="30" rx="4" fill="none" stroke="#afa9ec" stroke-width="0.5" stroke-dasharray="2 1.5" />
+			<!-- Back wall. -->
+			<rect width="160" height="26" fill="#f6f1e7" />
+			<rect y="25" width="160" height="2" fill="#d9cbb0" />
+			<!-- Window with a cloud. -->
+			<rect x="8" y="4" width="28" height="15" rx="1" fill="#cfe9f7" stroke="#c9b08a" stroke-width="1.2" />
+			<path d="M22 4v15M8 11.5h28" stroke="#c9b08a" stroke-width="0.8" />
+			<path d="M11 9a2 2 0 0 1 3.5-1.2a2.4 2.4 0 0 1 4.3 1.2z" fill="#fffdf8" />
+			<!-- Plant between the window and the whiteboard. -->
+			<ellipse cx="44" cy="15" rx="2.2" ry="5" fill="#5dcaa5" transform="rotate(-25 44 15)" />
+			<ellipse cx="47" cy="14" rx="2.2" ry="5.5" fill="#1d9e75" transform="rotate(15 47 14)" />
+			<ellipse cx="45.5" cy="12.5" rx="2" ry="5" fill="#9fe1cb" />
+			<path d="M42 19h7l-1 8h-5z" fill="#e08b5f" stroke="#993c1d" stroke-width="0.6" stroke-linejoin="round" />
+			<!-- The whiteboard, covered in sticky notes. -->
+			<rect x="56" y="3" width="50" height="17" rx="1" fill="#fffdf8" stroke="#b4b2a9" stroke-width="1" />
+			<rect x="60" y="6" width="6" height="5" fill="#9fe1cb" transform="rotate(-4 63 8.5)" />
+			<rect x="68" y="7" width="6" height="5" fill="#9fe1cb" transform="rotate(3 71 9.5)" />
+			<rect x="79" y="6" width="6" height="5" fill="#fac775" transform="rotate(5 82 8.5)" />
+			<rect x="87" y="9" width="6" height="5" fill="#f5c4b3" transform="rotate(-3 90 11.5)" />
+			<rect x="97" y="6" width="6" height="5" fill="#cecbf6" transform="rotate(-6 100 8.5)" />
+			<path d="M60 15.5h10M79 16.5h12M96 13.5h7" stroke="#d3d1c7" stroke-width="0.6" stroke-linecap="round" />
+			<rect x="70" y="20" width="22" height="1.4" rx="0.5" fill="#b4b2a9" />
+			<!-- Clock. -->
+			<circle cx="118" cy="9" r="4.5" fill="#fffdf8" stroke="#5f5e5a" stroke-width="0.9" />
+			<path d="M118 9V6.3M118 9l1.8 1.2" stroke="#26215c" stroke-width="0.7" stroke-linecap="round" />
+			<!-- Coffee counter. -->
+			<rect x="130" y="16" width="27" height="11" fill="#c08a5a" stroke="#854f0b" stroke-width="0.7" />
+			<rect x="129" y="15" width="29" height="2" rx="0.6" fill="#d9a066" stroke="#854f0b" stroke-width="0.6" />
+			<rect x="134" y="7" width="9" height="8" rx="1" fill="#5f5e5a" />
+			<rect x="136" y="11" width="5" height="3" rx="0.5" fill="#2a2723" />
+			<path d="M148 11h4v4h-4zM152 12h1.2v2H152" fill="#fffdf8" stroke="#888780" stroke-width="0.5" />
+			<path d="M149.5 10q.6-1 0-2M151 10q.6-1 0-2" fill="none" stroke="#b4b2a9" stroke-width="0.4" stroke-linecap="round" />
+			<!-- Potted plants in the front corners. -->
+			<g v-for="x in [9, 151]" :key="`pl${x}`">
+				<ellipse :cx="x - 3" :cy="88" rx="2.6" ry="6" fill="#5dcaa5" :transform="`rotate(-25 ${x - 3} 88)`" />
+				<ellipse :cx="x + 3" :cy="88" rx="2.6" ry="6" fill="#1d9e75" :transform="`rotate(25 ${x + 3} 88)`" />
+				<ellipse :cx="x" :cy="86" rx="2.4" ry="6.5" fill="#9fe1cb" />
+				<path :d="`M${x - 5} 92h10l-1.5 8h-7z`" fill="#e08b5f" stroke="#993c1d" stroke-width="0.6" stroke-linejoin="round" />
 			</g>
 		</svg>
 		<div

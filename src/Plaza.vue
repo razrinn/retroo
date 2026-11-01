@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import PlazaScene, { type Shown } from "./PlazaScene.vue";
 import { type PlazaPerson, REACTIONS, reducedMotion } from "./lib";
 
-// The plaza: everyone's Stickie on a shared lawn. Tap to walk there, tap an emoji to say it.
+// The plaza: everyone's Stickie in a shared little office. Tap to walk there, tap an emoji to say it.
 // Only tap targets travel over the socket; every browser animates the walk itself.
 const props = defineProps<{ people: PlazaPerson[] }>();
 const emit = defineEmits<{ send: [msg: object] }>();
@@ -110,7 +110,7 @@ const shown = computed<Shown[]>(() =>
 	}),
 );
 
-// Feet stay inside the lawn with room for the name below and the bubble above.
+// Feet stay inside the room with space for the name below and the bubble above.
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 function go(x: number, y: number) {
 	const id = me.value?.id;
@@ -121,9 +121,9 @@ function go(x: number, y: number) {
 	walkTo(id, x, y);
 	emit("send", { type: "walk", x, y });
 }
-const lawn = ref<HTMLElement>();
+const floor = ref<HTMLElement>();
 function onTap(e: PointerEvent) {
-	const r = lawn.value!.getBoundingClientRect();
+	const r = floor.value!.getBoundingClientRect();
 	go((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
 }
 // Arrow keys walk a step at a time, for keyboards.
@@ -166,8 +166,8 @@ onUnmounted(() => {
 		</header>
 		<div
 			v-show="!folded"
-			ref="lawn"
-			class="lawn"
+			ref="floor"
+			class="floor"
 			tabindex="0"
 			aria-label="Plaza. Tap or use arrow keys to walk."
 			@pointerdown="onTap"
@@ -215,13 +215,13 @@ h2 {
 .emotes button:hover {
 	scale: 1.2;
 }
-.lawn {
+.floor {
 	position: relative;
 	width: 100%;
 	aspect-ratio: 16 / 10;
 	overflow: hidden;
 	border-radius: 10px;
-	background: #d4ebc4;
+	background: #efdfc3;
 	touch-action: manipulation;
 	cursor: pointer;
 	user-select: none;
