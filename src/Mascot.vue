@@ -5,7 +5,15 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 // `mood` 1-5 swaps in the Team mood faces, from miserable (1) to thrilled (5), each with its own note color.
 // `follow` makes the eyes track the pointer and focused fields; bump `hop` to make Stickie jump once.
 const props = withDefaults(
-	defineProps<{ size?: number; face?: "happy" | "confused" | "worried" | "startled"; mood?: number | null; follow?: boolean; hop?: number }>(),
+	defineProps<{
+		size?: number;
+		face?: "happy" | "confused" | "worried" | "startled";
+		mood?: number | null;
+		// fill, fold, outline: paints Stickie in any color (the picker shows give each teammate their own).
+		paint?: readonly [string, string, string];
+		follow?: boolean;
+		hop?: number;
+	}>(),
 	{ size: 40, face: "happy", mood: null, follow: false, hop: 0 },
 );
 
@@ -18,7 +26,7 @@ const COLORS: Record<number, [string, string, string]> = {
 	4: ["#9FE1CB", "#5DCAA5", "#0F6E56"],
 	5: ["#CECBF6", "#AFA9EC", "#534AB7"],
 };
-const colors = computed(() => COLORS[props.mood ?? 5]);
+const colors = computed(() => props.paint ?? COLORS[props.mood ?? 5]);
 const MOUTHS: Record<string, string> = {
 	1: "M44 80Q61 64 78 80",
 	2: "M47 76Q61 68 75 76",

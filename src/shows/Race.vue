@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { sounds } from "../sound";
-import { type ShowProps, colorOf, rng, shuffle, span, useClock } from "../shows";
+import Mascot from "../Mascot.vue";
+import { INK, PAPER, type ShowProps, inkOf, paintOf, rng, short, shuffle, span, useClock } from "../shows";
+import Paper from "./Paper.vue";
 
-// Car race and horse race: lights, then everyone runs their own seeded pace, overtaking along the way.
+// Car race and horse race: Stickies in little karts or on hobby horses. Lights, then everyone runs their own
+// seeded pace, overtaking along the way.
 // The winner's pace is set to cross first; a commentary ticker calls the leaders.
 const props = defineProps<ShowProps & { kind: string }>();
 const emit = defineEmits<{ done: [] }>();
@@ -33,13 +36,17 @@ const START = 110; // room for names trailing behind
 const END = 580;
 const top = 34;
 const laneH = (360 - top - 30) / n;
-const emoji = Math.max(16, Math.min(46, laneH * 0.75));
+const S = Math.max(18, Math.min(52, laneH * 0.78)); // Stickie size
+// The hobby horse's head, facing right, in Stickie sizes: neck, ear, long face, muzzle, jaw.
+const pts = (list: number[][]) => list.map(([x, y], k) => `${k ? "L" : "M"}${(x + 0.28) * S} ${y * S}`).join("") + "Z";
+const HEAD = pts([[0.3, 0.02], [0.36, -0.36], [0.44, -0.6], [0.52, -0.42], [0.88, -0.2], [0.94, -0.06], [0.86, 0.02], [0.6, -0.02], [0.46, 0.12]]);
+const MANE = `M${0.64 * S} ${-0.36 * S}l${-0.1 * S} ${0.08 * S}l${0.06 * S} ${0.06 * S}l${-0.1 * S} ${0.08 * S}l${0.06 * S} ${0.06 * S}l${-0.08 * S} ${0.08 * S}`;
 const racers = computed(() =>
 	props.names.map((name, i) => {
 		const p = progress(i, u.value);
 		const spin = i === spinner ? 720 * span(u.value, 0.35, 0.5) : 0;
 		const bounce = !cars && u.value > 0 && p < 1 ? -Math.abs(Math.sin(u.value * 60 + i)) * laneH * 0.12 : 0;
-		return { name, i, x: START + (END - START) * Math.min(1.04, p), y: top + laneH * (i + 0.5), spin, bounce, done: p >= 1 };
+		return { name, i, x: START + (END - START) * Math.min(1.04, p), y: top + laneH * (i + 0.5) + S * 0.28, spin, bounce, done: p >= 1 };
 	}),
 );
 const leader = computed(() => racers.value.reduce((a, b) => (b.x > a.x ? b : a)).name);
@@ -73,36 +80,41 @@ const light = computed(() => Math.min(3, Math.floor(now.value / (LIGHTS / 3))));
 
 <template>
 	<svg viewBox="0 0 640 360" class="show">
-		<rect width="640" height="360" :fill="cars ? '#5f5e5a' : '#9fd09a'" />
-		<rect v-if="!cars" x="0" :y="top - 4" width="640" :height="360 - top - 22" fill="#d9a066" />
-		<g v-for="i in n - 1" :key="`l${i}`">
-			<path :d="`M0 ${top + laneH * i}H640`" :stroke="cars ? '#fffdf8' : '#c08a5a'" stroke-width="1.5" :stroke-dasharray="cars ? '14 10' : ''" opacity="0.6" />
-		</g>
-		<path v-if="!cars" :d="`M0 ${top - 4}H640M0 ${360 - 26}H640`" stroke="#fffdf8" stroke-width="3" />
-		<!-- Start and checkered finish. -->
-		<path :d="`M${START} ${top}V${360 - 30}`" stroke="#fffdf8" stroke-width="2" opacity="0.7" />
-		<g v-for="r in Math.ceil((360 - top - 30) / 8)" :key="`c${r}`">
-			<rect :x="END + 8" :y="top + (r - 1) * 8" width="8" height="8" :fill="r % 2 ? '#2a2723' : '#fffdf8'" />
-			<rect :x="END + 16" :y="top + (r - 1) * 8" width="8" height="8" :fill="r % 2 ? '#fffdf8' : '#2a2723'" />
+		<Paper />
+		<!-- Lanes: paper strips with faint dashed ink lines between. -->
+		<rect x="0" :y="top" width="640" :height="laneH * n" :fill="PAPER" opacity="0.7" />
+		<path v-for="i in n - 1" :key="`l${i}`" :d="`M0 ${top + laneH * i}H640`" :stroke="INK" stroke-width="1.5" stroke-dasharray="10 9" opacity="0.18" />
+		<path :d="`M${START} ${top}V${top + laneH * n}`" :stroke="INK" stroke-width="2" opacity="0.3" />
+		<g v-for="r in Math.ceil((laneH * n) / 9)" :key="`c${r}`">
+			<rect :x="END + 12" :y="top + (r - 1) * 9" width="9" height="9" :fill="r % 2 ? INK : PAPER" />
+			<rect :x="END + 21" :y="top + (r - 1) * 9" width="9" height="9" :fill="r % 2 ? PAPER : INK" />
 		</g>
 		<g v-for="r in racers" :key="r.name" :transform="`translate(${r.x} ${r.y + r.bounce})`">
-			<text v-if="u > 0 && !r.done && (!cars || r.i === spinner)" :x="-emoji * 0.35" :y="emoji * 0.35" :font-size="emoji * 0.4" text-anchor="middle" opacity="0.55">💨</text>
-			<text
-				:font-size="emoji"
-				text-anchor="middle"
-				dominant-baseline="central"
-				:transform="`rotate(${r.spin}) scale(-1 1)`"
-			>{{ cars ? "🏎️" : "🏇" }}</text>
-			<text :x="-emoji * 0.75" :y="0" text-anchor="end" dominant-baseline="central" :font-size="Math.max(10, Math.min(17, laneH * 0.4))" font-weight="800" :fill="colorOf(r.i)" stroke="#fffdf8" stroke-width="3" paint-order="stroke">{{ r.name }}</text>
+			<g :transform="`rotate(${r.spin})`">
+				<!-- Kart: a rounded body in the fold color, two ink wheels. -->
+				<template v-if="cars">
+					<rect :x="-S * 0.62" :y="S * 0.05" :width="S * 1.24" :height="S * 0.32" :rx="S * 0.14" :fill="paintOf(r.i)[1]" :stroke="INK" stroke-width="2.5" />
+					<circle v-for="side in [-1, 1]" :key="side" :cx="side * S * 0.4" :cy="S * 0.4" :r="S * 0.13" :fill="INK" />
+				</template>
+				<!-- Hobby horse: a stick and a horse head out front. -->
+				<template v-else>
+					<path :d="`M${-S * 0.55} ${S * 0.45}L${S * 0.7} ${S * 0.02}`" :stroke="paintOf(r.i)[2]" stroke-width="3" stroke-linecap="round" />
+					<path :d="HEAD" :fill="paintOf(r.i)[1]" :stroke="INK" stroke-width="2.2" stroke-linejoin="round" />
+					<path :d="MANE" fill="none" :stroke="paintOf(r.i)[2]" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+					<circle :cx="S * 0.9" :cy="-S * 0.26" :r="S * 0.045" :fill="INK" />
+				</template>
+				<g :transform="`translate(${-S / 2} ${-S * 0.82})`"><Mascot :size="S" :paint="paintOf(r.i)" :face="r.i === spinner && r.spin > 0 && r.spin < 720 ? 'startled' : 'happy'" /></g>
+			</g>
+			<text :x="-S * 0.75" :y="-S * 0.2" text-anchor="end" dominant-baseline="central" :font-size="Math.max(11, Math.min(16, laneH * 0.32))" font-weight="800" :fill="inkOf(r.i)" :stroke="PAPER" stroke-width="4" paint-order="stroke">{{ short(r.name) }}</text>
 		</g>
-		<!-- Start lights, then the commentary ticker. -->
-		<g v-if="now < LIGHTS + 0.5" transform="translate(320 18)">
-			<rect x="-46" y="-14" width="92" height="28" rx="14" fill="#2a2723" />
-			<circle v-for="k in 3" :key="k" :cx="-30 + (k - 1) * 30" cy="0" r="9" :fill="light >= 3 ? '#5dcaa5' : light >= k - 1 ? '#e24b4a' : '#5f5e5a'" />
+		<!-- Start lights, then the commentary in a paper pill. -->
+		<g v-if="now < LIGHTS + 0.5" transform="translate(320 17)">
+			<rect x="-52" y="-14" width="104" height="28" rx="14" :fill="PAPER" :stroke="INK" stroke-width="2.5" />
+			<circle v-for="k in 3" :key="k" :cx="-30 + (k - 1) * 30" cy="0" r="8" :fill="light >= 3 ? '#5DCAA5' : light >= k - 1 ? '#F0997B' : '#e2ddd0'" :stroke="INK" stroke-width="2" />
 		</g>
-		<g v-else>
-			<rect x="0" y="0" width="640" :height="top - 6" fill="#26215c" opacity="0.85" />
-			<text :key="line" x="320" :y="(top - 6) / 2" text-anchor="middle" dominant-baseline="central" font-size="15" font-weight="800" fill="#fffdf8" class="ticker">{{ line }}</text>
+		<g v-else-if="line" :key="line" class="ticker">
+			<rect x="150" y="3" width="340" height="28" rx="14" :fill="PAPER" :stroke="INK" stroke-width="2.5" />
+			<text x="320" y="17" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="800" :fill="INK">{{ line }}</text>
 		</g>
 	</svg>
 </template>

@@ -6,9 +6,23 @@ export const SHOWS = ["wheel", "cars", "horses", "balloons", "slots", "plinko", 
 export type Pick = { show: (typeof SHOWS)[number]; winner: string; names: string[]; seed: number };
 export type ShowProps = { names: string[]; winner: string; seed: number };
 
-// One color per name, in roster order.
-export const NAME_COLORS = ["#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#7f77dd", "#d4537e", "#0f8b8d", "#854f0b", "#5dcaa5", "#f0997b"];
-export const colorOf = (i: number) => NAME_COLORS[i % NAME_COLORS.length];
+// The shows' look: retroo paper and ink, with Stickie's pastel fills and darker outlines, one per teammate.
+export const INK = "#26215c";
+export const PAPER = "#fffdf8";
+export const PALETTE = [
+	["#F5C4B3", "#F0997B", "#993C1D"],
+	["#9FE1CB", "#5DCAA5", "#0F6E56"],
+	["#CECBF6", "#AFA9EC", "#534AB7"],
+	["#FAC775", "#EF9F27", "#854F0B"],
+	["#B5D4F4", "#85B7EB", "#185FA5"],
+	["#F4C0D1", "#ED93B1", "#993556"],
+	["#C0DD97", "#97C459", "#3B6D11"],
+	["#D3D1C7", "#B4B2A9", "#5F5E5A"],
+] as const;
+export const paintOf = (i: number) => PALETTE[i % PALETTE.length];
+export const colorOf = (i: number) => paintOf(i)[0];
+export const inkOf = (i: number) => paintOf(i)[2];
+export const short = (name: string, max = 10) => (name.length > max ? `${name.slice(0, max - 1)}…` : name);
 
 // Small seeded random generator (mulberry32): same seed, same numbers on every screen.
 export function rng(seed: number) {
