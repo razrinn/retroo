@@ -35,7 +35,9 @@ const progress = (i: number, t: number) => {
 const START = 110; // room for names trailing behind
 const END = 580;
 const top = 34;
-const laneH = (360 - top - 30) / n;
+// The track grows taller for bigger teams, so every racer keeps a readable lane.
+const H = Math.max(360, top + 30 + n * 30);
+const laneH = (H - top - 30) / n;
 const S = Math.max(18, Math.min(52, laneH * 0.78)); // Stickie size
 // The hobby horse's head, facing right, in Stickie sizes: neck, ear, long face, muzzle, jaw.
 const pts = (list: number[][]) => list.map(([x, y], k) => `${k ? "L" : "M"}${(x + 0.28) * S} ${y * S}`).join("") + "Z";
@@ -79,8 +81,8 @@ const light = computed(() => Math.min(3, Math.floor(now.value / (LIGHTS / 3))));
 </script>
 
 <template>
-	<svg viewBox="0 0 640 360" class="show">
-		<Paper />
+	<svg :viewBox="`0 0 640 ${H}`" class="show">
+		<Paper :height="H" />
 		<!-- Lanes: paper strips with faint dashed ink lines between. -->
 		<rect x="0" :y="top" width="640" :height="laneH * n" :fill="PAPER" opacity="0.7" />
 		<path v-for="i in n - 1" :key="`l${i}`" :d="`M0 ${top + laneH * i}H640`" :stroke="INK" stroke-width="1.5" stroke-dasharray="10 9" opacity="0.18" />
