@@ -3,11 +3,11 @@ import { domToBlob } from "modern-screenshot";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import Icon from "./Icon.vue";
 import ShareCard from "./ShareCard.vue";
-import { type BoardState, COLS, type PlazaPhoto, stackReactions, stacksIn, useFocusTrap } from "./lib";
+import { type BoardState, COLS, stackReactions, stacksIn, useFocusTrap } from "./lib";
 
 // The wrap-up: a live preview of the share image (exactly what gets copied, downloaded or shared),
 // plus a Markdown copy for Confluence or Notion.
-const props = defineProps<{ state: BoardState; code: string; photo?: () => PlazaPhoto | null }>();
+const props = defineProps<{ state: BoardState; code: string; doodle?: () => string | null }>();
 const emit = defineEmits<{ close: [] }>();
 
 const columns = computed(() =>
@@ -56,8 +56,7 @@ const markdown = computed(() => {
 });
 
 // The preview is the real ShareCard at 1200×675, scaled down to fit; the PNG is taken from it directly.
-// The plaza as it is when the summary opens: a team photo (wave now!).
-const teamPhoto = props.photo?.() ?? null;
+const doodleUrl = ref<string | null>(props.doodle?.() ?? null);
 const cardEl = ref<HTMLElement>();
 const frame = ref<HTMLElement>();
 const scale = ref(0.5);
@@ -131,7 +130,7 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 
 			<div ref="frame" class="frame">
 				<div class="scaler" :style="{ transform: `scale(${scale})` }">
-					<div ref="cardEl"><ShareCard :state="state" :photo="teamPhoto" /></div>
+					<div ref="cardEl"><ShareCard :state="state" :doodle="doodleUrl" /></div>
 				</div>
 			</div>
 

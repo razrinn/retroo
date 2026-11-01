@@ -16,7 +16,7 @@ type Phase = "writing" | "revealed" | "locked";
 type FollowUp = { source: string; text: string; carried: number };
 type CarryOver = { title: string; mood: number | null; items: FollowUp[] };
 type Stroke = { c: string; w: number; p: [number, number][] };
-type Msg = { type: string; stroke?: Stroke; id?: string; onto?: string; x?: number; y?: number; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
+type Msg = { type: string; stroke?: Stroke; id?: string; onto?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 
@@ -119,8 +119,6 @@ export class Board extends DurableObject<Env> {
 	// ponytail: in-memory spam limit for emoji rain, resets if the object hibernates, which is fine for a toy
 	recentBursts = new Map<string, number[]>();
 	lastTyping = new Map<string, number>();
-	lastWalk = new Map<string, number>();
-	lastEmote = new Map<string, number>();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -133,7 +131,6 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS followups (id TEXT PRIMARY KEY, text TEXT NOT NULL, carried INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
 			CREATE TABLE IF NOT EXISTS strokes (id TEXT PRIMARY KEY, author TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
-			CREATE TABLE IF NOT EXISTS spots (person TEXT PRIMARY KEY, x REAL NOT NULL, y REAL NOT NULL);
 		`);
 		// Boards created before follow-ups tracked their source get the column added in place.
 		const cols = this.sql.exec<{ name: string }>("PRAGMA table_info(followups)").toArray().map((c) => c.name);
@@ -245,8 +242,6 @@ export class Board extends DurableObject<Env> {
 		const client = url.searchParams.get("client") ?? "";
 		if (!/^[\w-]{8,64}$/.test(client)) return new Response("Bad client id", { status: 400 });
 		this.setName(client, url.searchParams.get("name"));
-		// Everyone gets a spot in the plaza on first visit, somewhere near the middle.
-		this.sql.exec("INSERT OR IGNORE INTO spots (person, x, y) VALUES (?, ?, ?)", client, 0.3 + Math.random() * 0.4, 0.4 + Math.random() * 0.35);
 		await this.pullFromPrevious();
 
 		const { 0: browser, 1: server } = new WebSocketPair();
@@ -390,26 +385,6 @@ export class Board extends DurableObject<Env> {
 				this.toEach(() => ({ unstroke: last.id }));
 				return;
 			}
-			// Plaza: a walk is a tap target (each browser animates the glide), an emote a bubble. Both are relayed
-			// as small events; the last spot is kept so the summary's team photo includes people who left.
-			case "walk": {
-				const x = Number(msg.x);
-				const y = Number(msg.y);
-				const now = Date.now();
-				if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1) || now - (this.lastWalk.get(client) ?? 0) < 100) return;
-				this.lastWalk.set(client, now);
-				const spot = { id: tag(client), x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 };
-				this.sql.exec("INSERT INTO spots (person, x, y) VALUES (?, ?, ?) ON CONFLICT(person) DO UPDATE SET x = excluded.x, y = excluded.y", client, spot.x, spot.y);
-				this.toEach(() => ({ walk: spot }));
-				return;
-			}
-			case "emote": {
-				const now = Date.now();
-				if (!REACTIONS.includes(String(msg.emoji)) || now - (this.lastEmote.get(client) ?? 0) < 500) return;
-				this.lastEmote.set(client, now);
-				this.toEach(() => ({ emote: { id: tag(client), emoji: msg.emoji } }));
-				return;
-			}
 			case "typing": {
 				// "Someone is writing": relayed to everyone else, never stored, at most once per 2 seconds each.
 				const now = Date.now();
@@ -472,11 +447,6 @@ export class Board extends DurableObject<Env> {
 			)
 			.toArray();
 		const reactions = this.sql.exec<{ card: string; person: string; emoji: string }>("SELECT card, person, emoji FROM reactions").toArray();
-		const spots = this.sql
-			.exec<{ person: string; name: string; x: number; y: number }>(
-				"SELECT s.person, COALESCE(p.name, 'Anonymous') AS name, s.x, s.y FROM spots s LEFT JOIN people p ON p.id = s.person ORDER BY p.name",
-			)
-			.toArray();
 		const comments = this.sql
 			.exec<{ id: string; card: string; author: string; name: string; text: string }>(
 				`SELECT m.id, m.card, m.author, COALESCE(p.name, 'Anonymous') AS name, m.text
@@ -504,7 +474,6 @@ export class Board extends DurableObject<Env> {
 					online,
 					now: Date.now(),
 					timerEnd,
-					plaza: spots.map((p) => ({ id: tag(p.person), name: p.name, x: p.x, y: p.y, here: clients.includes(p.person), me: p.person === me })),
 					mood: {
 						mine: moods.find((m) => m.person === me)?.value ?? null,
 						rated: moods.length,

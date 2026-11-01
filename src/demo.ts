@@ -1,7 +1,7 @@
 // The /demo board: a stand-in for the Board Durable Object that runs in the browser and saves to
 // localStorage, so people can try retroo without a password or a server. It speaks the same messages
 // as the real WebSocket. Keep its rules in step with Board in src/worker.ts (the tests cover the real one).
-import { REACTIONS, load, onFloor, save } from "./lib";
+import { REACTIONS, load, save } from "./lib";
 
 const KEY = "retroo-demo-live"; // new key when the starting data changes, so old saved demos start fresh
 const COLS = ["well", "improve", "action"];
@@ -19,7 +19,6 @@ type Data = {
 	followUps: { id: string; text: string; carried: number; status: "open" | "done" | "dropped" }[];
 	moods: Record<string, number>;
 	strokes: { id: string; author: string; c: string; w: number; p: [number, number][] }[];
-	spots?: Record<string, { x: number; y: number }>;
 };
 
 const id = () => crypto.randomUUID();
@@ -75,12 +74,6 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 		data = seed();
 	}
 	data.people[me] = name || "You";
-	const spot = () => {
-		const [x, y] = onFloor(Math.random(), 0.4 + Math.random() * 0.5);
-		return { x, y };
-	};
-	data.spots ??= {};
-	for (const p of Object.keys(data.people)) data.spots[p] ??= spot();
 	const persist = () => save(KEY, JSON.stringify(data));
 
 	function view() {
@@ -97,7 +90,6 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			online: Object.values(data.people).sort(),
 			now: Date.now(),
 			timerEnd: data.timerEnd,
-			plaza: Object.entries(data.spots!).map(([id, s]) => ({ id, name: data.people[id] ?? "Anonymous", ...s, here: true, me: id === me })),
 			mood: {
 				mine: data.moods[me] ?? null,
 				rated: moods.length,
@@ -201,14 +193,6 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			case "lock":
 				data.phase = msg.locked ? "locked" : "revealed";
 				break;
-			case "walk":
-				data.spots![me] = { x: msg.x, y: msg.y };
-				persist();
-				on.message({ walk: { id: me, x: msg.x, y: msg.y } });
-				return;
-			case "emote":
-				on.message({ emote: { id: me, emoji: msg.emoji } });
-				return;
 			case "burst":
 				on.message({ burst: msg.emoji, name: data.people[me], from: me });
 				return;
@@ -239,14 +223,6 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 		on.message(view());
 	}
 
-	// The made-up teammates wander around the plaza and now and then say something.
-	const wander = setInterval(() => {
-		const who = Object.keys(TEAM)[Math.floor(Math.random() * 3)];
-		data.spots![who] = spot();
-		on.message({ walk: { id: who, ...data.spots![who] } });
-		if (Math.random() < 0.3) on.message({ emote: { id: who, emoji: REACTIONS[Math.floor(Math.random() * REACTIONS.length)] } });
-	}, 3500);
-
 	setTimeout(() => {
 		on.open();
 		persist();
@@ -255,6 +231,6 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 	return {
 		readyState: WebSocket.OPEN as number,
 		send: (raw: string) => handle(JSON.parse(raw)),
-		close: () => clearInterval(wander),
+		close() {},
 	};
 }

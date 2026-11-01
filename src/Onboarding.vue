@@ -14,7 +14,7 @@ const TOURS: Record<"join" | "run", Step[]> = {
 		{ scene: "write", title: "Write privately", body: "Add notes in any column. Nobody sees what you wrote until Reveal, and cards never show who wrote them." },
 		{ scene: "reveal", title: "Reveal and react", body: "When the facilitator reveals, every card flips over. React with one emoji per card, comment, and drag similar cards together to group them." },
 		{ scene: "carry", title: "Last sprint and action items", body: "Check off last sprint's items, and write this sprint's action items. Anything unfinished carries over next time." },
-		{ scene: "fun", title: "Have some fun", body: "Rain emoji on everyone, and walk around the plaza while you wait. Stickie's face follows the room's mood." },
+		{ scene: "fun", title: "Have some fun", body: "Rain emoji on everyone, doodle together while you wait. Stickie's face follows the room's mood." },
 	],
 	run: [
 		{ scene: "share", title: "Share the code", body: "Send this code or link to your team. Anyone with it can join." },

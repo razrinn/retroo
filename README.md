@@ -15,7 +15,7 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 - **Summary** at the end, copyable as Markdown for Slack, Confluence or Notion.
 - **Mood trend** across sprints on Past boards.
 - **Anonymous cards**: nobody sees who wrote what; comments and reactions show names.
-- **Presenter view**, **shared timer**, **plaza** (walk around and emote; it becomes a team photo in the summary) and **emoji rain**.
+- **Presenter view**, **shared timer**, **doodle wall** and **emoji rain**.
 - **Join with a code**; one shared password to create boards.
 
 ## How it works
@@ -27,7 +27,7 @@ Browser (Vue)  ──WebSocket──►  Worker  ──►  Durable Object "Boar
 ```
 
 - **Worker** (`src/worker.ts`) serves the built app and routes `/api/*`.
-- **Board Durable Object** holds a board's cards, reactions, comments, moods and plaza spots in its own SQLite, and pushes updates to everyone over hibernating WebSockets.
+- **Board Durable Object** holds a board's cards, reactions, comments, moods and doodle in its own SQLite, and pushes updates to everyone over hibernating WebSockets.
 - **D1** stores only the list of boards.
 - **Frontend** is Vue 3 + Vite with the Cloudflare Vite plugin, so `pnpm dev` runs the real Worker and Durable Objects locally.
 - Tooling is the [`cf` CLI](https://github.com/cloudflare/cf) (beta) with `cloudflare.config.ts`.
@@ -89,8 +89,7 @@ src/worker.ts         Worker routes and the Board Durable Object
 src/Board.vue         The board screen
 src/NoteCard.vue      A card with reactions and comments
 src/Presenter.vue     Presenter view
-src/Plaza.vue         Plaza: walk around and emote (PlazaScene.vue draws it)
-src/Doodle.vue        Doodle wall (not shown for now)
+src/Doodle.vue        Doodle wall
 src/EmojiRain.vue     Emoji rain and combos
 src/Timer.vue         Shared timer
 src/Mascot.vue        Stickie, the mascot (also public/favicon.svg)

@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import Mascot from "./Mascot.vue";
-import PlazaScene from "./PlazaScene.vue";
-import { type BoardState, type PlazaPhoto, moodTint, stackReactions, stacksIn } from "./lib";
+import { type BoardState, moodTint, stackReactions, stacksIn } from "./lib";
 
 // The 1200×675 picture behind "Share image" in the Summary. Rendered off-screen and turned into a PNG
 // in the browser (modern-screenshot); nothing here is ever shown on the page itself.
-const props = defineProps<{ state: BoardState; photo: PlazaPhoto | null }>();
+const props = defineProps<{ state: BoardState; doodle: string | null }>();
 
 const top = (col: string) => stacksIn(props.state.cards, col, true).filter((s) => s.cards[0].text !== null).slice(0, 3);
 const well = computed(() => top("well"));
@@ -61,7 +60,7 @@ const tint = computed(() => (mood.value.average !== null ? moodTint(mood.value.a
 				<p v-if="moreActions > 0" class="none">+{{ moreActions }} more</p>
 				<p v-if="state.followUps.length" class="last">Last sprint: {{ last.done }} done · {{ last.open }} carried over</p>
 			</section>
-			<div v-if="photo?.people.length" class="photo"><PlazaScene :people="photo.people" :emotes="photo.emotes" :size="46" /></div>
+			<img v-if="doodle" class="doodle" :src="doodle" alt="" />
 		</div>
 
 		<footer>made with <strong>retroo</strong></footer>
@@ -209,9 +208,7 @@ h2 {
 	font-size: 15px;
 	color: #77716a;
 }
-.photo {
-	position: relative;
-	overflow: hidden;
+.doodle {
 	height: 100%;
 	aspect-ratio: 16 / 10;
 	border-radius: 14px;
