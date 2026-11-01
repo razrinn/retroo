@@ -110,7 +110,7 @@ onUnmounted(() => observer.disconnect());
 	<section class="panel doodle" aria-label="Doodle wall">
 		<header>
 			<h2>
-				<button class="fold" :aria-expanded="!folded" @click="folded = !folded">Doodle <span aria-hidden="true">{{ folded ? "›" : "⌄" }}</span></button>
+				<button class="fold" :aria-expanded="!folded" @click="folded = !folded">Doodle <Icon name="chevron" class="chev" :class="{ shut: folded }" /></button>
 			</h2>
 			<template v-if="!locked && !folded">
 				<div class="row swatches" role="group" aria-label="Color">
@@ -163,9 +163,22 @@ h2 {
 }
 .fold {
 	all: unset;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
 	cursor: pointer;
 	font: inherit;
 	font-weight: 700;
+}
+.chev {
+	width: 16px;
+	height: 16px;
+	vertical-align: 0;
+	color: var(--muted);
+	transition: rotate 0.2s;
+}
+.chev.shut {
+	rotate: -90deg;
 }
 .fold:focus-visible {
 	outline: 2.5px solid var(--accent);

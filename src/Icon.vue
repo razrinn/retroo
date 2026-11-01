@@ -56,6 +56,9 @@ defineProps<{
 			<rect x="7.5" y="3.5" width="13" height="13" rx="2" />
 			<path d="M4.5 7.5v11a2 2 0 0 0 2 2h11" />
 		</template>
+		<template v-else-if="name === 'chevron'">
+			<path d="M6.5 9.5l5.5 5.5 5.5-5.5" />
+		</template>
 		<template v-else-if="name === 'brush'">
 			<path d="M14.5 4.5l5 5L10 19l-5.5.5L5 14z" />
 		</template>
