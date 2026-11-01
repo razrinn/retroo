@@ -43,4 +43,14 @@ export const sounds = {
 	combo() {
 		beep(400, 0.16, 0.06, 900);
 	},
+	// Picker shows: a click as something passes, a pop or boom, and a fanfare for the winner.
+	tick() {
+		beep(1200, 0.03, 0.03, 900);
+	},
+	pop() {
+		beep(300, 0.12, 0.07, 80);
+	},
+	fanfare() {
+		[523, 659, 784, 1047].forEach((f, i) => beep(f, i === 3 ? 0.5 : 0.14, 0.06, f, i * 0.12));
+	},
 };

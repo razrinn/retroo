@@ -10,13 +10,19 @@ const DOODLE_COLORS = ["#2a2723", "#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#
 // Pen strokes leave `b` out, so drawings from before brushes existed still read as pens.
 const DOODLE_BRUSHES = ["marker", "spray", "rainbow", "stamp", "text"];
 const MAX_DOODLE_TEXT = 60;
+// The next-MC picker: one of these shows plays out on every screen. Keep in step with SHOWS in src/shows.ts.
+const SHOWS = ["wheel", "cars", "horses", "balloons", "slots", "plinko", "claw", "ducks", "potato", "lottery"];
+const MAX_ROSTER = 30;
 const MAX_STROKES = 2000;
 const MAX_POINTS = 500;
 
 type Phase = "writing" | "revealed" | "locked";
 // `source` is the id of the card or follow-up it came from on the previous board, so re-pulling never duplicates.
 type FollowUp = { source: string; text: string; carried: number };
-type CarryOver = { title: string; mood: number | null; items: FollowUp[] };
+type Member = { name: string; had_turn: number };
+// `team` carries the MC picker: the roster with who has had a turn, the MC picked here and the last show played.
+type Team = { roster: Member[]; mc: string | null; show: string | null };
+type CarryOver = { title: string; mood: number | null; items: FollowUp[]; team?: Team };
 type Stroke = { c: string; w: number; p: [number, number][]; b?: string; t?: string };
 type Msg = { type: string; stroke?: Stroke; id?: string; onto?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
 
@@ -130,6 +136,7 @@ export class Board extends DurableObject<Env> {
 	// ponytail: in-memory spam limit for emoji rain, resets if the object hibernates, which is fine for a toy
 	recentBursts = new Map<string, number[]>();
 	lastTyping = new Map<string, number>();
+	lastPick = 0;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -142,6 +149,7 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS followups (id TEXT PRIMARY KEY, text TEXT NOT NULL, carried INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open');
 			CREATE TABLE IF NOT EXISTS strokes (id TEXT PRIMARY KEY, author TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
+			CREATE TABLE IF NOT EXISTS roster (name TEXT PRIMARY KEY COLLATE NOCASE, had_turn INTEGER NOT NULL DEFAULT 0);
 		`);
 		// Boards created before follow-ups tracked their source get the column added in place.
 		const cols = this.sql.exec<{ name: string }>("PRAGMA table_info(followups)").toArray().map((c) => c.name);
@@ -176,6 +184,47 @@ export class Board extends DurableObject<Env> {
 		this.setMeta("previous_title", previous.title);
 		if (previous.mood !== null) this.setMeta("previous_mood", String(previous.mood));
 		this.mergeFollowUps(previous.items);
+		if (previous.team) this.takeTeam(previous.team);
+	}
+
+	// The roster and rotation continue from the previous board, and its pick is this retro's MC. Until someone
+	// here edits the roster or picks, a later pick or roster change on the previous board still flows in.
+	takeTeam(team: Team) {
+		if (team.mc) this.setMeta("host", team.mc);
+		if (this.meta("team_touched")) return;
+		this.sql.exec("DELETE FROM roster");
+		for (const m of team.roster) this.sql.exec("INSERT OR IGNORE INTO roster (name, had_turn) VALUES (?, ?)", m.name, m.had_turn);
+		if (team.show) this.setMeta("last_show", team.show);
+	}
+
+	team(): Team {
+		return {
+			roster: this.sql.exec<Member>("SELECT name, had_turn FROM roster ORDER BY rowid").toArray(),
+			mc: this.meta("mc") ?? null,
+			show: this.meta("last_show") ?? null,
+		};
+	}
+
+	// Picks the next MC from those who haven't had a turn (everyone again once all have), and a show that isn't
+	// the one played last time. Picking again here puts the earlier pick back in the rotation.
+	pickMc() {
+		const earlier = this.meta("mc");
+		if (earlier) this.sql.exec("UPDATE roster SET had_turn = 0 WHERE name = ?", earlier);
+		let pool = this.sql.exec<{ name: string }>("SELECT name FROM roster WHERE had_turn = 0 ORDER BY rowid").toArray();
+		if (!pool.length) {
+			this.sql.exec("UPDATE roster SET had_turn = 0");
+			pool = this.sql.exec<{ name: string }>("SELECT name FROM roster ORDER BY rowid").toArray();
+		}
+		const rand = (n: number) => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+		const winner = pool[rand(pool.length)].name;
+		const shows = SHOWS.filter((x) => x !== this.meta("last_show"));
+		const show = shows[rand(shows.length)];
+		this.sql.exec("UPDATE roster SET had_turn = 1 WHERE name = ?", winner);
+		this.setMeta("mc", winner);
+		this.setMeta("last_show", show);
+		this.setMeta("team_touched", "1");
+		const names = this.sql.exec<{ name: string }>("SELECT name FROM roster ORDER BY rowid").toArray().map((r) => r.name);
+		return { show, winner, names, seed: rand(2 ** 31) };
 	}
 
 	// Adds items we don't have yet; for ones still open, picks up text edits. Never removes anything,
@@ -200,6 +249,7 @@ export class Board extends DurableObject<Env> {
 		try {
 			const carried = await boardStub(this.env, previousCode).carryOver();
 			if (carried) this.mergeFollowUps(carried.items);
+			if (carried?.team) this.takeTeam(carried.team);
 		} catch (err) {
 			// Joining must never fail because the previous board didn't answer; the next join tries again.
 			console.error("pull from previous board failed", previousCode, err);
@@ -233,7 +283,7 @@ export class Board extends DurableObject<Env> {
 				) ORDER BY grp, ord`,
 			)
 			.toArray();
-		return { title: this.meta("title") ?? "", mood: this.moodAverage(), items };
+		return { title: this.meta("title") ?? "", mood: this.moodAverage(), items, team: this.team() };
 	}
 
 	// Locking reveals too, so a locked board never keeps hidden cards. Unlock returns to revealed.
@@ -396,6 +446,31 @@ export class Board extends DurableObject<Env> {
 				this.toEach(() => ({ unstroke: last.id }));
 				return;
 			}
+			// Next-MC picker. The roster is the team's real names, typed in (board names can be anything).
+			case "roster_add": {
+				const name = text.slice(0, 40);
+				const count = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM roster").one().n;
+				if (phase === "locked" || !name || count >= MAX_ROSTER) return;
+				this.sql.exec("INSERT OR IGNORE INTO roster (name) VALUES (?)", name);
+				this.setMeta("team_touched", "1");
+				break;
+			}
+			case "roster_remove":
+				if (phase === "locked") return;
+				this.sql.exec("DELETE FROM roster WHERE name = ?", String(msg.name ?? ""));
+				if (this.meta("mc") === msg.name) this.sql.exec("DELETE FROM meta WHERE key = 'mc'");
+				this.setMeta("team_touched", "1");
+				break;
+			case "pick": {
+				// Everyone watches the same show land on the same name; one pick at a time, while it plays.
+				const now = Date.now();
+				const count = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM roster").one().n;
+				if (phase === "locked" || count < 2 || now - this.lastPick < 8000) return;
+				this.lastPick = now;
+				const pick = this.pickMc();
+				this.toEach(() => ({ pick }));
+				break;
+			}
 			case "typing": {
 				// "Someone is writing": relayed to everyone else, never stored, at most once per 2 seconds each.
 				const now = Date.now();
@@ -458,6 +533,7 @@ export class Board extends DurableObject<Env> {
 			)
 			.toArray();
 		const reactions = this.sql.exec<{ card: string; person: string; emoji: string }>("SELECT card, person, emoji FROM reactions").toArray();
+		const team = this.team();
 		const comments = this.sql
 			.exec<{ id: string; card: string; author: string; name: string; text: string }>(
 				`SELECT m.id, m.card, m.author, COALESCE(p.name, 'Anonymous') AS name, m.text
@@ -485,6 +561,7 @@ export class Board extends DurableObject<Env> {
 					online,
 					now: Date.now(),
 					timerEnd,
+					team: { roster: team.roster.map((m) => ({ name: m.name, done: m.had_turn === 1 })), mc: team.mc, host: this.meta("host") ?? null },
 					mood: {
 						mine: moods.find((m) => m.person === me)?.value ?? null,
 						rated: moods.length,

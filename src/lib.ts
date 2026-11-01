@@ -29,6 +29,9 @@ export type BoardState = {
 	timerEnd: number | null;
 	mood: Mood;
 	cards: Card[];
+	// Next-MC picker: the team roster (done = had a turn), the MC picked on this board, and this retro's MC
+	// (picked on the previous board).
+	team: { roster: { name: string; done: boolean }[]; mc: string | null; host: string | null };
 };
 // Stacks in a column, in writing order; byReactions puts the most-reacted first (ties keep writing order).
 export function stacksIn(cards: Card[], col: string, byReactions = false): Stack[] {

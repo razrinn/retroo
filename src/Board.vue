@@ -7,10 +7,12 @@ import Icon from "./Icon.vue";
 import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
 import Onboarding from "./Onboarding.vue";
+import Picker from "./Picker.vue";
 import Presenter from "./Presenter.vue";
 import Summary from "./Summary.vue";
 import Timer from "./Timer.vue";
 import { demoSocket, resetDemo } from "./demo";
+import type { Pick } from "./shows";
 import { setSound, soundOn, sounds } from "./sound";
 import { type BoardState, type Card, COLS, GITHUB_URL, MOODS, type Stack, confetti, formatCode, hash, load, moodTint, post, save, stacksIn, useDismiss } from "./lib";
 
@@ -31,6 +33,9 @@ const showLock = ref(false);
 const lockPassword = ref("");
 const presenting = ref(false);
 const summarizing = ref(false);
+// The next-MC picker: open from the header, or on everyone's screen when someone picks (to watch the show).
+const pickerOpen = ref(false);
+const pick = ref<Pick | null>(null);
 const copied = ref(false);
 const offset = ref(0);
 const rain = ref<InstanceType<typeof EmojiRain>>();
@@ -114,6 +119,10 @@ function onMessage(data: any) {
 	if ("phase" in data) onState(data);
 	else if ("typing" in data) typingUntil.value = { ...typingUntil.value, [data.typing]: Date.now() + 4000 };
 	else if (data.burst) rain.value?.drop(data.burst, data.name, data.from);
+	else if (data.pick) {
+		pick.value = data.pick;
+		pickerOpen.value = true;
+	}
 	else doodle.value?.apply(data);
 }
 
@@ -392,6 +401,7 @@ const phaseLabel = computed(() =>
 			<h1 v-if="state.title">{{ state.title }}</h1>
 			<button v-if="!demo" class="chip mono" :title="copied ? 'Copied' : 'Copy code'" @click="copyCode">{{ copied ? "Copied" : formatCode(code) }}</button>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
+			<span v-if="state.team?.host" class="host" title="This retro's MC, picked last sprint">👑 {{ state.team.host }}</span>
 			<div class="actions">
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
 				<span v-for="p in state.online.slice(0, 6)" :key="p" class="bubble" :class="{ typing: isTyping(p) }" :style="bubble(p)" :title="isTyping(p) ? `${p} is writing` : p">{{ initials(p) }}</span>
@@ -401,6 +411,9 @@ const phaseLabel = computed(() =>
 				<Icon :name="sound ? 'sound' : 'mute'" />
 			</button>
 			<Timer :end="state.timerEnd" :offset="offset" @set="(seconds) => send({ type: 'timer', seconds })" />
+			<button class="icon-btn" title="Next MC" aria-label="Pick the next MC" @click="pick = null; pickerOpen = true">
+				<Icon name="crown" /><span class="lbl">Next MC</span>
+			</button>
 			<button v-if="state.phase !== 'writing'" class="icon-btn" title="Present" aria-label="Present" @click="presenting = true">
 				<Icon name="present" /><span class="lbl">Present</span>
 			</button>
@@ -602,6 +615,7 @@ const phaseLabel = computed(() =>
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
 	<Onboarding v-if="tour && state" :tour="tour" :live="state.live" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
 	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" :doodle="() => doodle?.snapshot() ?? null" @close="summarizing = false" />
+	<Picker v-if="pickerOpen && state?.team" :team="state.team" :locked="state.phase === 'locked'" :pick="pick" @send="send" @close="pickerOpen = false; pick = null" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>
 
@@ -749,6 +763,16 @@ header h1 {
 	border-radius: 999px;
 	padding: 2px 12px;
 	font-size: 13px;
+}
+/* This retro's MC, picked at the end of the last one. */
+.host {
+	font-size: 13px;
+	font-weight: 700;
+	padding: 3px 12px;
+	border-radius: 999px;
+	color: var(--warn-ink, #854f0b);
+	background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+	border: 1.5px solid color-mix(in srgb, var(--warn) 40%, transparent);
 }
 .phase {
 	font-size: 13px;

@@ -2,6 +2,7 @@
 // localStorage, so people can try retroo without a password or a server. It speaks the same messages
 // as the real WebSocket. Keep its rules in step with Board in src/worker.ts (the tests cover the real one).
 import { REACTIONS, load, save } from "./lib";
+import { SHOWS } from "./shows";
 
 const KEY = "retroo-demo-live"; // new key when the starting data changes, so old saved demos start fresh
 const COLS = ["well", "improve", "action"];
@@ -19,6 +20,9 @@ type Data = {
 	followUps: { id: string; text: string; carried: number; status: "open" | "done" | "dropped" }[];
 	moods: Record<string, number>;
 	strokes: { id: string; author: string; c: string; w: number; p: [number, number][] }[];
+	roster?: { name: string; done: boolean }[];
+	mc?: string | null;
+	lastShow?: string;
 };
 
 const id = () => crypto.randomUUID();
@@ -74,6 +78,8 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 		data = seed();
 	}
 	data.people[me] = name || "You";
+	// The demo team's real names for the next-MC picker; Budi was MC last time.
+	data.roster ??= ["Dina", "Budi", "Sari", "Ray"].map((n) => ({ name: n, done: n === "Budi" }));
 	const persist = () => save(KEY, JSON.stringify(data));
 
 	function view() {
@@ -90,6 +96,7 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			online: Object.values(data.people).sort(),
 			now: Date.now(),
 			timerEnd: data.timerEnd,
+			team: { roster: data.roster, mc: data.mc ?? null, host: "Budi" },
 			mood: {
 				mine: data.moods[me] ?? null,
 				rated: moods.length,
@@ -193,6 +200,31 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			case "lock":
 				data.phase = msg.locked ? "locked" : "revealed";
 				break;
+			case "roster_add":
+				if (phase === "locked" || !text || data.roster!.some((m) => m.name.toLowerCase() === text.toLowerCase())) return;
+				data.roster!.push({ name: text.slice(0, 40), done: false });
+				break;
+			case "roster_remove":
+				data.roster = data.roster!.filter((m) => m.name !== msg.name);
+				if (data.mc === msg.name) data.mc = null;
+				break;
+			case "pick": {
+				// Same rules as the server's pickMc.
+				const roster = data.roster!;
+				if (phase === "locked" || roster.length < 2) return;
+				if (data.mc) roster.forEach((m) => m.name === data.mc && (m.done = false));
+				let pool = roster.filter((m) => !m.done);
+				if (!pool.length) roster.forEach((m) => (m.done = false)), (pool = roster);
+				const winner = pool[Math.floor(Math.random() * pool.length)].name;
+				const shows = SHOWS.filter((x) => x !== data.lastShow);
+				const show = shows[Math.floor(Math.random() * shows.length)];
+				roster.forEach((m) => m.name === winner && (m.done = true));
+				data.mc = winner;
+				data.lastShow = show;
+				persist();
+				on.message({ pick: { show, winner, names: roster.map((m) => m.name), seed: Math.floor(Math.random() * 2 ** 31) } });
+				break;
+			}
 			case "burst":
 				on.message({ burst: msg.emoji, name: data.people[me], from: me });
 				return;

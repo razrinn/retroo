@@ -425,3 +425,33 @@ test("doodle brushes: sizes 2-24, known brushes only, stamps from the reactions,
 	);
 	a.close();
 });
+
+test("next MC: roster, a shared pick, and the rotation and show carry to the next board", async () => {
+	const first = await create();
+	const a = await join(first, "alice-0012");
+	await a.send({ type: "pick" }); // no roster yet: ignored
+	for (const name of ["Dina", "Budi", "dina", "Sari"]) await a.send({ type: "roster_add", text: name });
+	assert.deepEqual(a.s.team.roster.map((m: State) => m.name), ["Dina", "Budi", "Sari"], "no duplicates, any case");
+	await a.send({ type: "pick" });
+	const pick = a.events.find((e) => e.pick).pick;
+	assert.ok(["Dina", "Budi", "Sari"].includes(pick.winner));
+	assert.equal(typeof pick.seed, "number");
+	assert.equal(a.s.team.mc, pick.winner);
+	await a.send({ type: "pick" }); // still playing: ignored
+	assert.equal(a.events.filter((e) => e.pick).length, 1);
+	a.close();
+
+	// Next sprint: last pick is this retro's MC, and they sit out until everyone has had a turn.
+	const second = await create(first);
+	const b = await join(second, "bobby-0012");
+	assert.equal(b.s.team.host, pick.winner);
+	assert.deepEqual(b.s.team.roster.filter((m: State) => m.done).map((m: State) => m.name), [pick.winner]);
+	await b.send({ type: "pick" });
+	const next = b.events.find((e) => e.pick).pick;
+	assert.notEqual(next.winner, pick.winner);
+	assert.notEqual(next.show, pick.show, "never the same show twice in a row");
+	await b.send({ type: "roster_remove", name: "Sari" });
+	await b.send({ type: "roster_add", text: "New hire" });
+	assert.deepEqual(b.s.team.roster.map((m: State) => m.name), ["Dina", "Budi", "New hire"].filter((n) => n !== "Sari"));
+	b.close();
+});
