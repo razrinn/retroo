@@ -6,7 +6,11 @@ import { type BoardState, confetti, reducedMotion, useFocusTrap } from "./lib";
 import { type Pick } from "./shows";
 import { sounds } from "./sound";
 import Balloons from "./shows/Balloons.vue";
+import Claw from "./shows/Claw.vue";
+import Ducks from "./shows/Ducks.vue";
+import Lottery from "./shows/Lottery.vue";
 import Plinko from "./shows/Plinko.vue";
+import Potato from "./shows/Potato.vue";
 import Race from "./shows/Race.vue";
 import Slots from "./shows/Slots.vue";
 import Wheel from "./shows/Wheel.vue";
@@ -16,7 +20,19 @@ import Wheel from "./shows/Wheel.vue";
 const props = defineProps<{ team: BoardState["team"]; locked: boolean; pick: Pick | null }>();
 const emit = defineEmits<{ send: [msg: object]; close: [] }>();
 
-const SHOW_VIEWS: Partial<Record<Pick["show"], Component>> = { wheel: Wheel, cars: Race, horses: Race, balloons: Balloons, slots: Slots, plinko: Plinko };
+const SHOW_VIEWS: Record<Pick["show"], Component> = {
+	wheel: Wheel,
+	cars: Race,
+	horses: Race,
+	balloons: Balloons,
+	slots: Slots,
+	plinko: Plinko,
+	claw: Claw,
+	ducks: Ducks,
+	potato: Potato,
+	lottery: Lottery,
+};
+// A show this build doesn't know (an older tab after a deploy) falls back to the wheel.
 const view = computed(() => (props.pick ? (SHOW_VIEWS[props.pick.show] ?? Wheel) : null));
 
 // playing → the show; revealed → winner card; otherwise the roster.
