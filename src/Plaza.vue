@@ -221,7 +221,7 @@ h2 {
 	aspect-ratio: 16 / 10;
 	overflow: hidden;
 	border-radius: 10px;
-	background: var(--bg) radial-gradient(var(--dot) 1px, transparent 1px) 0 0 / 16px 16px;
+	background: #d4ebc4;
 	touch-action: manipulation;
 	cursor: pointer;
 	user-select: none;

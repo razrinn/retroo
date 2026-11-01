@@ -211,6 +211,7 @@ h2 {
 }
 .photo {
 	position: relative;
+	overflow: hidden;
 	height: 100%;
 	aspect-ratio: 16 / 10;
 	border-radius: 14px;
