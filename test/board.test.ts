@@ -401,3 +401,27 @@ test("stacking groups cards in one column, only while cards are visible", async 
 	assert.equal(a.s.cards[1].parent, null);
 	a.close();
 });
+
+test("doodle brushes: sizes 2-24, known brushes only, stamps from the reactions, short text", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0011");
+	const dot = { c: "#2a2723", w: 4, p: [[0.5, 0.5]] };
+	await a.send({ type: "stroke", stroke: { ...dot, w: 30 } }); // too big
+	await a.send({ type: "stroke", stroke: { ...dot, b: "laser" } }); // unknown brush
+	await a.send({ type: "stroke", stroke: { ...dot, b: "stamp", t: "🍕" } }); // not a reaction
+	await a.send({ type: "stroke", stroke: { ...dot, b: "text", t: "   " } }); // empty
+	await a.send({ type: "stroke", stroke: { ...dot, b: "text", t: "hi", p: [[0.1, 0.1], [0.2, 0.2]] } }); // text is one point
+	await a.send({ type: "stroke", stroke: { ...dot, b: "spray", w: 24, p: [[0.1, 0.1], [0.2, 0.2]] } });
+	await a.send({ type: "stroke", stroke: { ...dot, b: "stamp", t: "🚀" } });
+	await a.send({ type: "stroke", stroke: { ...dot, b: "text", t: ` ${"x".repeat(80)} `, c: "#d4537e" } });
+	const kept = a.events.filter((e) => e.stroke).map((e) => e.stroke);
+	assert.deepEqual(
+		kept.map((s: any) => [s.b, s.t?.length ?? 0]),
+		[
+			["spray", 0],
+			["stamp", 2],
+			["text", 60],
+		],
+	);
+	a.close();
+});

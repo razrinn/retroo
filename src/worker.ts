@@ -6,8 +6,10 @@ const MAX_TEXT = 500;
 const TIMER_SECONDS = [180, 300, 600];
 const REACTIONS = ["👍", "👎", "❤️", "😂", "🎉", "🚀", "🔥", "🤔"];
 const MAX_COMMENT = 300;
-const DOODLE_COLORS = ["#2a2723", "#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#7f77dd"];
-const DOODLE_WIDTHS = [3, 8];
+const DOODLE_COLORS = ["#2a2723", "#e24b4a", "#ef9f27", "#1d9e75", "#378add", "#7f77dd", "#d4537e", "#854f0b", "#0f8b8d"];
+// Pen strokes leave `b` out, so drawings from before brushes existed still read as pens.
+const DOODLE_BRUSHES = ["marker", "spray", "rainbow", "stamp", "text"];
+const MAX_DOODLE_TEXT = 60;
 const MAX_STROKES = 2000;
 const MAX_POINTS = 500;
 
@@ -15,7 +17,7 @@ type Phase = "writing" | "revealed" | "locked";
 // `source` is the id of the card or follow-up it came from on the previous board, so re-pulling never duplicates.
 type FollowUp = { source: string; text: string; carried: number };
 type CarryOver = { title: string; mood: number | null; items: FollowUp[] };
-type Stroke = { c: string; w: number; p: [number, number][] };
+type Stroke = { c: string; w: number; p: [number, number][]; b?: string; t?: string };
 type Msg = { type: string; stroke?: Stroke; id?: string; onto?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
@@ -99,10 +101,12 @@ export default {
 // A short, stable, non-reversible tag for a browser id (used where names may be hidden).
 const tag = (client: string) => [...client].reduce((h, ch) => (h * 33 + ch.charCodeAt(0)) >>> 0, 5381).toString(36);
 
-// Accepts only our colors and widths, points as 0..1 fractions rounded to 3 decimals, at most MAX_POINTS.
+// Accepts only our colors, brushes and sizes (2-24), points as 0..1 fractions rounded to 3 decimals, at most
+// MAX_POINTS. Stamps (an emoji from the reactions) and text are a single point.
 function cleanStroke(raw: unknown): Stroke | null {
 	const s = raw as Stroke;
-	if (!s || !DOODLE_COLORS.includes(s.c) || !DOODLE_WIDTHS.includes(s.w) || !Array.isArray(s.p)) return null;
+	if (!s || !DOODLE_COLORS.includes(s.c) || !Number.isInteger(s.w) || s.w < 2 || s.w > 24 || !Array.isArray(s.p)) return null;
+	if (s.b !== undefined && !DOODLE_BRUSHES.includes(s.b)) return null;
 	if (s.p.length < 1 || s.p.length > MAX_POINTS) return null;
 	const p: [number, number][] = [];
 	for (const pt of s.p) {
@@ -111,7 +115,14 @@ function cleanStroke(raw: unknown): Stroke | null {
 		if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return null;
 		p.push([Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]);
 	}
-	return { c: s.c, w: s.w, p };
+	const out: Stroke = { c: s.c, w: s.w, p };
+	if (s.b) out.b = s.b;
+	if (s.b === "stamp" || s.b === "text") {
+		const t = typeof s.t === "string" ? s.t.trim().slice(0, MAX_DOODLE_TEXT) : "";
+		if (p.length !== 1 || !t || (s.b === "stamp" && !REACTIONS.includes(t))) return null;
+		out.t = t;
+	}
+	return out;
 }
 
 export class Board extends DurableObject<Env> {

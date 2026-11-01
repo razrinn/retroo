@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Small line icons for header buttons; they inherit the text color. Decorative: the button carries the label.
 defineProps<{
-	name: "timer" | "present" | "summary" | "lock" | "unlock" | "sound" | "mute" | "copy" | "download" | "share" | "markdown" | "undo" | "brush" | "close" | "sort" | "stack";
+	name: "timer" | "present" | "summary" | "lock" | "unlock" | "sound" | "mute" | "copy" | "download" | "share" | "markdown" | "undo" | "pen" | "marker" | "spray" | "rainbow" | "stamp" | "text" | "close" | "sort" | "stack" | "chevron";
 }>();
 </script>
 
@@ -59,8 +59,24 @@ defineProps<{
 		<template v-else-if="name === 'chevron'">
 			<path d="M6.5 9.5l5.5 5.5 5.5-5.5" />
 		</template>
-		<template v-else-if="name === 'brush'">
+		<template v-else-if="name === 'pen'">
 			<path d="M14.5 4.5l5 5L10 19l-5.5.5L5 14z" />
+		</template>
+		<template v-else-if="name === 'marker'">
+			<path d="M9.5 14.5L16 4l4 2.5-6.5 10.5zM9.5 14.5l-1 3.5 3.5-.5M4 21h8" />
+		</template>
+		<template v-else-if="name === 'spray'">
+			<rect x="7" y="10" width="8" height="11" rx="1.5" />
+			<path d="M9.5 10V7h3v3M17.5 6h.01M20 4h.01M20 8h.01M17.5 9.5h.01M21.5 6.5h.01" />
+		</template>
+		<template v-else-if="name === 'rainbow'">
+			<path d="M3 18a9 9 0 0 1 18 0M6.5 18a5.5 5.5 0 0 1 11 0M10 18a2 2 0 0 1 4 0" />
+		</template>
+		<template v-else-if="name === 'stamp'">
+			<path d="M9.5 3.5h5v5.5l2.5 3H7L9.5 9zM4.5 12h15v4h-15zM7 20h10" />
+		</template>
+		<template v-else-if="name === 'text'">
+			<path d="M5 7V4.5h14V7M12 4.5v15M9 19.5h6" />
 		</template>
 		<template v-else>
 			<path d="M6 6l12 12M18 6L6 18" />
