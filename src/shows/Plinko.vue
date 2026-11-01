@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { sounds } from "../sound";
-import { type ShowProps, colorOf, rng, useClock } from "../shows";
+import Mascot from "../Mascot.vue";
+import { INK, type ShowProps, colorOf, inkOf, rng, short, useClock } from "../shows";
+import Paper from "./Paper.vue";
 
-// Plinko: a ball drops through rows of pegs, bouncing left and right, teeters on the last peg between
+// Plinko: Stickie drops through rows of pegs, bouncing left and right, teeters on the last peg between
 // two slots, then falls into the winner's.
 const props = defineProps<ShowProps>();
 const emit = defineEmits<{ done: [] }>();
@@ -67,35 +69,38 @@ watch(landed, (v) => v && sounds.pop());
 
 <template>
 	<svg viewBox="0 0 640 360" class="show">
-		<rect width="640" height="360" fill="#e8e5ff" />
+		<Paper />
 		<g v-for="(row, r) in pegs" :key="`r${r}`">
-			<circle v-for="(p, k) in row" :key="k" :cx="p.x" :cy="p.y" r="4" fill="#534ab7" />
+			<circle v-for="(p, k) in row" :key="k" :cx="p.x" :cy="p.y" r="3.5" :fill="INK" opacity="0.75" />
 		</g>
-		<!-- Slots with the names, standing up. -->
+		<!-- Slots with the names, standing up when they're narrow. -->
 		<g v-for="(name, i) in names" :key="name">
 			<rect
-				:x="LEFT + i * slotW + 1"
+				:x="LEFT + i * slotW + 2"
 				:y="FLOOR - 40"
-				:width="slotW - 2"
-				:height="40 + 360 - FLOOR"
-				:fill="landed && i === names.indexOf(winner) ? '#fac775' : colorOf(i)"
-				:opacity="landed && i !== names.indexOf(winner) ? 0.35 : 0.9"
+				:width="slotW - 4"
+				:height="360 - FLOOR + 36"
+				rx="6"
+				:fill="landed && i === names.indexOf(winner) ? '#FAC775' : colorOf(i)"
+				:stroke="INK"
+				:stroke-width="landed && i === names.indexOf(winner) ? 3.5 : 2"
+				:opacity="landed && i !== names.indexOf(winner) ? 0.4 : 1"
 			/>
 			<text
 				:x="LEFT + (i + 0.5) * slotW"
 				:y="FLOOR + 10"
-				:font-size="Math.max(10, Math.min(15, slotW * 0.45))"
+				:font-size="Math.max(10, Math.min(15, slotW * 0.42))"
 				font-weight="800"
-				fill="#fffdf8"
+				:fill="inkOf(i)"
 				dominant-baseline="central"
 				:transform="slotW < 70 ? `rotate(-90 ${LEFT + (i + 0.5) * slotW} ${FLOOR + 10})` : ''"
 				:text-anchor="slotW < 70 ? 'start' : 'middle'"
 			>
-				{{ name.length > 10 ? `${name.slice(0, 9)}…` : name }}
+				{{ short(name) }}
 			</text>
 		</g>
-		<path :d="`M${LEFT} ${FLOOR - 40}V360M${LEFT + WIDTH} ${FLOOR - 40}V360`" stroke="#534ab7" stroke-width="3" />
-		<circle :cx="ball.x" :cy="ball.y" r="9" fill="#e24b4a" stroke="#993c1d" stroke-width="2.5" />
-		<circle :cx="ball.x - 3" :cy="ball.y - 3" r="2.5" fill="#fffdf8" opacity="0.7" />
+		<g :transform="`translate(${ball.x - 13} ${ball.y - 13}) rotate(${ball.x * 2} 13 13)`">
+			<Mascot :size="26" :face="landed ? 'happy' : 'startled'" />
+		</g>
 	</svg>
 </template>

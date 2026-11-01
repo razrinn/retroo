@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { sounds } from "../sound";
-import { type ShowProps, colorOf, rng, shuffle, useClock } from "../shows";
+import Mascot from "../Mascot.vue";
+import { INK, PAPER, type ShowProps, colorOf, inkOf, paintOf, rng, short, shuffle, useClock } from "../shows";
+import Paper from "./Paper.vue";
 
 // Balloon pop: everyone's name on a balloon. Darts fly in and pop them one by one, slower and slower;
 // the last one floating is the MC.
@@ -14,7 +16,7 @@ const w = props.names.indexOf(props.winner);
 // Spread the balloons over a loose grid with a little jitter.
 const cols = Math.ceil(Math.sqrt(n * 1.8));
 const rows = Math.ceil(n / cols);
-const r = Math.min(54, 230 / cols, 120 / rows);
+const r = Math.min(54, 230 / cols, 104 / rows);
 const balloons = props.names.map((name, i) => ({
 	name,
 	i,
@@ -54,42 +56,50 @@ watch(popped, () => sounds.pop());
 
 <template>
 	<svg viewBox="0 0 640 360" class="show">
-		<rect width="640" height="360" fill="#e6f5fc" />
+		<Paper />
 		<g v-for="b in view" :key="b.name">
 			<g v-if="!b.popped" :transform="`translate(${b.x} ${b.y}) scale(${b.s}) translate(${-b.x} ${-b.y})`">
-				<path :d="`M${b.x} ${b.y + r * 1.15}q-6 18 2 34`" fill="none" stroke="#888780" stroke-width="1.2" />
-				<ellipse :cx="b.x" :cy="b.y" :rx="r * 0.9" :ry="r * 1.1" :fill="colorOf(b.i)" :stroke="b.crowned ? '#ef9f27' : 'none'" stroke-width="4" />
-				<path :d="`M${b.x - 4} ${b.y + r * 1.1 + 4}l4-5l4 5z`" :fill="colorOf(b.i)" />
-				<ellipse :cx="b.x - r * 0.35" :cy="b.y - r * 0.45" :rx="r * 0.15" :ry="r * 0.25" fill="#fffdf8" opacity="0.5" />
-				<text :x="b.x" :y="b.y" text-anchor="middle" dominant-baseline="central" :font-size="Math.min(15, r * 0.5)" font-weight="800" fill="#fffdf8">
-					{{ b.name.length > 9 ? `${b.name.slice(0, 8)}…` : b.name }}
+				<path :d="`M${b.x} ${b.y + r * 1.15}q-6 18 2 34`" fill="none" :stroke="INK" stroke-width="1.5" opacity="0.5" />
+				<path :d="`M${b.x - 5} ${b.y + r * 1.1 + 5}l5-6l5 6z`" :fill="paintOf(b.i)[1]" :stroke="INK" stroke-width="2" stroke-linejoin="round" />
+				<ellipse :cx="b.x" :cy="b.y" :rx="r * 0.9" :ry="r * 1.1" :fill="colorOf(b.i)" :stroke="INK" :stroke-width="b.crowned ? 4 : 2.5" />
+				<ellipse :cx="b.x - r * 0.35" :cy="b.y - r * 0.45" :rx="r * 0.13" :ry="r * 0.22" :fill="PAPER" opacity="0.8" />
+				<text :x="b.x" :y="b.y" text-anchor="middle" dominant-baseline="central" :font-size="Math.min(15, r * 0.42)" font-weight="800" :fill="inkOf(b.i)">
+					{{ short(b.name, 9) }}
 				</text>
-				<text v-if="b.crowned" :x="b.x" :y="b.y - r * 1.3" text-anchor="middle" font-size="28" class="crown">👑</text>
+				<!-- The last one left: Stickie pops up on top, cheering. -->
+				<g v-if="b.crowned" class="cheer" :transform="`translate(${b.x - 18} ${b.y - r * 1.1 - 34})`"><Mascot :size="36" :mood="5" /></g>
 			</g>
-			<!-- Pop: a word and a few shreds, gone in half a second. -->
+			<!-- Pop: a paper starburst and a few ink shreds, gone in half a second. -->
 			<g v-else-if="b.burst < 0.5" :opacity="1 - b.burst * 2">
-				<text :x="b.x" :y="b.y" text-anchor="middle" dominant-baseline="central" :font-size="18 + b.burst * 40" font-weight="900" fill="#2a2723">POP!</text>
+				<path
+					:d="Array.from({ length: 16 }, (_, k) => `${k ? 'L' : 'M'}${b.x + Math.cos(k * 0.3927) * (k % 2 ? 16 : 30) * (1 + b.burst * 2)} ${b.y + Math.sin(k * 0.3927) * (k % 2 ? 16 : 30) * (1 + b.burst * 2)}`).join('') + 'Z'"
+					:fill="PAPER"
+					:stroke="INK"
+					stroke-width="2.5"
+					stroke-linejoin="round"
+				/>
+				<text :x="b.x" :y="b.y" text-anchor="middle" dominant-baseline="central" :font-size="14 + b.burst * 16" font-weight="900" :fill="INK">POP!</text>
 				<path
 					v-for="k in 8"
 					:key="k"
-					:d="`M${b.x + Math.cos(k * 0.785) * (10 + b.burst * 90)} ${b.y + Math.sin(k * 0.785) * (10 + b.burst * 90)}l6 3`"
-					:stroke="colorOf(b.i)"
-					stroke-width="4"
+					:d="`M${b.x + Math.cos(k * 0.785) * (34 + b.burst * 90)} ${b.y + Math.sin(k * 0.785) * (34 + b.burst * 90)}l6 3`"
+					:stroke="paintOf(b.i)[2]"
+					stroke-width="3.5"
 					stroke-linecap="round"
 				/>
 			</g>
 			<!-- The dart on its way in. -->
 			<g v-if="b.dart !== null" :transform="`translate(${-30 + (b.x + 30) * b.dart} ${b.dartFrom + (b.y - b.dartFrom) * b.dart}) rotate(${(Math.atan2(b.y - b.dartFrom, b.x + 30) * 180) / Math.PI})`">
-				<path d="M-26 0H0" stroke="#5f5e5a" stroke-width="2.5" />
-				<path d="M0 -4L8 0L0 4z" fill="#2a2723" />
-				<path d="M-26 0l-6-6M-26 0l-6 6" stroke="#e24b4a" stroke-width="2.5" stroke-linecap="round" />
+				<path d="M-28 0H0" :stroke="INK" stroke-width="3" stroke-linecap="round" />
+				<path d="M0 -5L10 0L0 5z" :fill="INK" />
+				<path d="M-24 0l-8-7h8zM-24 0l-8 7h8z" fill="#F0997B" :stroke="INK" stroke-width="1.5" stroke-linejoin="round" />
 			</g>
 		</g>
 	</svg>
 </template>
 
 <style scoped>
-.crown {
+.cheer {
 	animation: drop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 @keyframes drop {
