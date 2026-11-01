@@ -23,6 +23,8 @@ const emit = defineEmits<{
 	stack: [onto: string];
 	unstack: [];
 }>();
+// Only the tape strip at the top starts a drag, so the card's text stays selectable.
+const grab = ref(false);
 const short = (text: string) => (text.length > 40 ? `${text.slice(0, 40)}…` : text);
 
 const picking = ref(false);
@@ -82,7 +84,9 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 	<article
 		class="note"
 		:class="[`note-${card.col}`, { back: card.text === null, fresh, flip: flipIndex !== null, raised: picking }]"
-		:draggable="!!targets?.length && !editing"
+		:draggable="grab"
+		@pointerup="grab = false"
+		@dragend="grab = false"
 		:style="{ rotate: tilt, animationDelay: delay, '--rx': `${lean.x}deg`, '--ry': `${lean.y}deg` }"
 		@pointermove="onPointerMove"
 		@pointerleave="lean = { x: 0, y: 0 }"
@@ -92,6 +96,7 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 		</template>
 		<template v-else>
 			<span v-for="f in floats" :key="f.id" class="float" aria-hidden="true">+{{ f.emoji }}</span>
+			<span v-if="targets?.length && !editing" class="grip" title="Drag onto a similar card to group them" aria-hidden="true" @pointerdown="grab = true" />
 			<textarea
 				v-if="editing"
 				ref="box"
@@ -114,14 +119,12 @@ const delay = computed(() => (props.flipIndex === null ? undefined : `${props.fl
 					<button v-if="!editing" class="ghost small" @click="startEdit">Edit</button>
 					<ConfirmButton v-if="phase === 'writing'" ask="Delete?" yes="Delete" danger class="ghost small" @confirm="emit('remove')">Delete</ConfirmButton>
 				</template>
-				<button v-if="stacked && phase === 'revealed'" class="ghost small stack-btn" title="Unstack" aria-label="Take this card out of the stack" @click="emit('unstack')">
-					<Icon name="unstack" />
-				</button>
+				<button v-if="stacked && phase === 'revealed'" class="ghost small" aria-label="Take this card out of the group" @click="emit('unstack')">Unstack</button>
 				<!-- Same as dragging onto another card, for keyboards and phones: a native picker behind the icon. -->
-				<label v-else-if="targets?.length" class="ghost small stack-btn" title="Stack onto…">
+				<label v-else-if="targets?.length" class="stack-btn" title="Group with…">
 					<Icon name="stack" />
-					<select aria-label="Stack onto another card" @change="emit('stack', ($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
-						<option value="" disabled selected>Stack onto…</option>
+					<select aria-label="Group with another card" @change="emit('stack', ($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
+						<option value="" disabled selected>Group with…</option>
 						<option v-for="t in targets" :key="t.id" :value="t.id">{{ short(t.text) }}</option>
 					</select>
 				</label>
@@ -291,8 +294,40 @@ footer button.ghost {
 .stack-btn:has(select:focus-visible) {
 	outline: 2px solid var(--accent);
 }
-.note[draggable="true"] {
+/* A strip of tape at the top: the drag handle. Mouse only; touch screens use the picker. */
+.grip {
+	position: absolute;
+	top: -6px;
+	left: 50%;
+	width: 44px;
+	height: 14px;
+	translate: -50% 0;
+	rotate: -2deg;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--tag) 30%, var(--surface));
+	box-shadow: 0 1px 3px rgba(60, 45, 20, 0.25);
 	cursor: grab;
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+.note:hover .grip {
+	opacity: 1;
+}
+/* With a mouse, the picker shows on hover or focus only; touch screens always show it. */
+@media (hover: hover) {
+	.stack-btn {
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+	.note:hover .stack-btn,
+	.stack-btn:focus-within {
+		opacity: 1;
+	}
+}
+@media (hover: none) {
+	.grip {
+		display: none;
+	}
 }
 textarea {
 	width: 100%;

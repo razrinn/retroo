@@ -226,6 +226,10 @@ function onDragOver(e: DragEvent, s: Stack) {
 	e.preventDefault();
 	dropOn.value = s.id;
 }
+// Moving over the card's own text or buttons also fires dragleave; only clear when the pointer really left.
+function onDragLeave(e: DragEvent, s: Stack) {
+	if (dropOn.value === s.id && !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dropOn.value = "";
+}
 function onDrop(s: Stack) {
 	if (dragging.value && dropOn.value === s.id) send({ type: "stack", id: dragging.value.id, onto: s.id });
 	dragging.value = null;
@@ -537,7 +541,7 @@ const phaseLabel = computed(() =>
 					:key="st.id"
 					:class="{ stack: st.cards.length > 1, 'drop-on': dropOn === st.id }"
 					@dragover="onDragOver($event, st)"
-					@dragleave="dropOn === st.id && (dropOn = '')"
+					@dragleave="onDragLeave($event, st)"
 					@drop.prevent="onDrop(st)"
 				>
 					<span v-if="st.cards.length > 1" class="stack-tag">{{ st.cards.length }} cards<template v-if="st.total"> · {{ st.total }} reaction{{ st.total === 1 ? "" : "s" }}</template></span>
@@ -1138,10 +1142,14 @@ header h1 {
 	font-weight: 700;
 	color: var(--muted);
 }
+/* The card or group under a dragged card lifts and tints, ready to catch it. */
 .drop-on {
+	border-radius: 14px;
 	outline: 2.5px dashed var(--accent);
 	outline-offset: 3px;
-	border-radius: 14px;
+	background: var(--accent-soft);
+	scale: 1.03;
+	transition: scale 0.15s ease-out, background 0.15s;
 }
 /* Cards glide to their new place when sorting reorders them. */
 .reorder-move {

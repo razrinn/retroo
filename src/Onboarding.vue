@@ -12,7 +12,7 @@ type Step = { title: string; body: string; scene: string };
 const TOURS: Record<"join" | "run", Step[]> = {
 	join: [
 		{ scene: "write", title: "Write privately", body: "Add notes in any column. Nobody sees what you wrote until Reveal, and cards never show who wrote them." },
-		{ scene: "reveal", title: "Reveal and react", body: "When the facilitator reveals, every card flips over. React with one emoji per card, and comment to discuss." },
+		{ scene: "reveal", title: "Reveal and react", body: "When the facilitator reveals, every card flips over. React with one emoji per card, comment, and drag similar cards together to group them." },
 		{ scene: "carry", title: "Last sprint and action items", body: "Check off last sprint's items, and write this sprint's action items. Anything unfinished carries over next time." },
 		{ scene: "fun", title: "Have some fun", body: "Rain emoji on everyone, doodle together while you wait. Stickie's face follows the room's mood." },
 	],
@@ -25,7 +25,7 @@ const TOURS: Record<"join" | "run", Step[]> = {
 // Live boards show cards as they're written, so the first steps read differently there.
 const LIVE: Record<string, Partial<Step>> = {
 	write: { scene: "write-live", title: "Write anonymously", body: "Add notes in any column. Everyone sees them right away, but cards never show who wrote them." },
-	reveal: { scene: "react", title: "React and discuss", body: "React with one emoji per card to show what matters, and comment to discuss. The facilitator presents the most-reacted cards first." },
+	reveal: { scene: "react", title: "React and discuss", body: "React with one emoji per card, comment to discuss, and drag similar cards together to group them. The most-reacted get presented first." },
 	guide: { scene: "guide-live", body: "Start a timer for writing, give people a few minutes to read and react, then Present, most-reacted first." },
 };
 const steps = computed(() => TOURS[props.tour].map((s) => (props.live ? { ...s, ...LIVE[s.scene] } : s)));

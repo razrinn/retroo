@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Small line icons for header buttons; they inherit the text color. Decorative: the button carries the label.
 defineProps<{
-	name: "timer" | "present" | "summary" | "lock" | "unlock" | "sound" | "mute" | "copy" | "download" | "share" | "markdown" | "undo" | "brush" | "close" | "sort" | "stack" | "unstack";
+	name: "timer" | "present" | "summary" | "lock" | "unlock" | "sound" | "mute" | "copy" | "download" | "share" | "markdown" | "undo" | "brush" | "close" | "sort" | "stack";
 }>();
 </script>
 
@@ -55,10 +55,6 @@ defineProps<{
 		<template v-else-if="name === 'stack'">
 			<rect x="7.5" y="3.5" width="13" height="13" rx="2" />
 			<path d="M4.5 7.5v11a2 2 0 0 0 2 2h11" />
-		</template>
-		<template v-else-if="name === 'unstack'">
-			<rect x="3.5" y="3.5" width="9" height="9" rx="2" />
-			<rect x="11.5" y="11.5" width="9" height="9" rx="2" />
 		</template>
 		<template v-else-if="name === 'brush'">
 			<path d="M14.5 4.5l5 5L10 19l-5.5.5L5 14z" />
