@@ -5,7 +5,10 @@ import Mascot from "./Mascot.vue";
 import { type BoardState, confetti, reducedMotion, useFocusTrap } from "./lib";
 import { type Pick } from "./shows";
 import { sounds } from "./sound";
+import Balloons from "./shows/Balloons.vue";
+import Plinko from "./shows/Plinko.vue";
 import Race from "./shows/Race.vue";
+import Slots from "./shows/Slots.vue";
 import Wheel from "./shows/Wheel.vue";
 
 // Next MC: the team roster and a pick. A pick opens this on every screen and plays the same show,
@@ -13,7 +16,7 @@ import Wheel from "./shows/Wheel.vue";
 const props = defineProps<{ team: BoardState["team"]; locked: boolean; pick: Pick | null }>();
 const emit = defineEmits<{ send: [msg: object]; close: [] }>();
 
-const SHOW_VIEWS: Partial<Record<Pick["show"], Component>> = { wheel: Wheel, cars: Race, horses: Race };
+const SHOW_VIEWS: Partial<Record<Pick["show"], Component>> = { wheel: Wheel, cars: Race, horses: Race, balloons: Balloons, slots: Slots, plinko: Plinko };
 const view = computed(() => (props.pick ? (SHOW_VIEWS[props.pick.show] ?? Wheel) : null));
 
 // playing → the show; revealed → winner card; otherwise the roster.
