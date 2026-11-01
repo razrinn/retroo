@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect } from "vue";
 import ConfirmButton from "./ConfirmButton.vue";
-import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
 import Icon from "./Icon.vue";
 import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
 import Onboarding from "./Onboarding.vue";
+import Plaza from "./Plaza.vue";
 import Presenter from "./Presenter.vue";
 import Summary from "./Summary.vue";
 import Timer from "./Timer.vue";
@@ -34,7 +34,7 @@ const summarizing = ref(false);
 const copied = ref(false);
 const offset = ref(0);
 const rain = ref<InstanceType<typeof EmojiRain>>();
-const doodle = ref<InstanceType<typeof Doodle>>();
+const plaza = ref<InstanceType<typeof Plaza>>();
 
 // Animation bookkeeping: cards that just appeared drop in, cards that just got revealed flip over.
 const fresh = ref(new Set<string>());
@@ -110,11 +110,11 @@ function onOpen() {
 	status.value = "open";
 }
 function onMessage(data: any) {
-	// Full board states carry a phase; emoji rain and doodle strokes are small events of their own.
+	// Full board states carry a phase; emoji rain and plaza walks are small events of their own.
 	if ("phase" in data) onState(data);
 	else if ("typing" in data) typingUntil.value = { ...typingUntil.value, [data.typing]: Date.now() + 4000 };
 	else if (data.burst) rain.value?.drop(data.burst, data.name, data.from);
-	else doodle.value?.apply(data);
+	else plaza.value?.apply(data);
 }
 
 function connect() {
@@ -515,7 +515,8 @@ const phaseLabel = computed(() =>
 				</section>
 			</div>
 
-			<Doodle ref="doodle" :locked="state.phase === 'locked'" @send="send" />
+			<!-- The doodle wall (Doodle.vue) used to live here; the plaza replaced it. -->
+			<Plaza ref="plaza" :people="state.plaza ?? []" @send="send" />
 		</div>
 
 		<div class="cols">
@@ -601,7 +602,7 @@ const phaseLabel = computed(() =>
 	</Transition>
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
 	<Onboarding v-if="tour && state" :tour="tour" :live="state.live" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
-	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" :doodle="() => doodle?.snapshot() ?? null" @close="summarizing = false" />
+	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" :photo="() => plaza?.photo() ?? null" @close="summarizing = false" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />
 </template>
 
@@ -911,7 +912,7 @@ header h1 {
 		translate: 0 -6px;
 	}
 }
-/* Mood and last sprint stacked in the left third, the doodle in the right two-thirds; one column on phones. */
+/* Mood and last sprint stacked in the left third, the plaza in the right two-thirds; one column on phones. */
 .top {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);

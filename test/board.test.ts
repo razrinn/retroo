@@ -401,3 +401,29 @@ test("stacking groups cards in one column, only while cards are visible", async 
 	assert.equal(a.s.cards[1].parent, null);
 	a.close();
 });
+
+test("plaza: everyone gets a spot, walks are relayed and saved, emotes only from the set", async () => {
+	const code = await create();
+	const a = await join(code, "alice-0010");
+	const b = await join(code, "bobby-0010");
+	await a.send({ type: "name", name: "alice" });
+	assert.equal(b.s.plaza.length, 2);
+	const alice = b.s.plaza.find((p: State) => p.name === "alice");
+	assert.equal(alice.me, false);
+	assert.equal(a.s.plaza.find((p: State) => p.me).id, alice.id);
+	await a.send({ type: "walk", x: 0.5, y: 2 }); // off the lawn: ignored
+	await a.send({ type: "walk", x: 0.25, y: 0.75 });
+	await b.send({ type: "emote", emoji: "🎉" });
+	await b.send({ type: "emote", emoji: "🍕" });
+	assert.deepEqual(
+		b.events.filter((e) => e.walk).map((e) => e.walk),
+		[{ id: alice.id, x: 0.25, y: 0.75 }],
+	);
+	assert.deepEqual(a.events.filter((e) => e.emote).map((e) => e.emote.emoji), ["🎉"]);
+	// Alice leaves; her spot stays for the team photo, marked as away.
+	a.close();
+	await b.send({ type: "name", name: "bobby" });
+	const left = b.s.plaza.find((p: State) => p.id === alice.id);
+	assert.deepEqual([left.x, left.y, left.here], [0.25, 0.75, false]);
+	b.close();
+});

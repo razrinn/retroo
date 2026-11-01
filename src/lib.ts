@@ -29,7 +29,11 @@ export type BoardState = {
 	timerEnd: number | null;
 	mood: Mood;
 	cards: Card[];
+	plaza: PlazaPerson[];
 };
+// Someone's Stickie in the plaza: their last spot (0..1 of the plaza's width and height), and whether they're here now.
+export type PlazaPerson = { id: string; name: string; x: number; y: number; here: boolean; me: boolean };
+export type PlazaPhoto = { people: PlazaPerson[]; emotes: Record<string, { emoji: string; n: number }> };
 // Stacks in a column, in writing order; byReactions puts the most-reacted first (ties keep writing order).
 export function stacksIn(cards: Card[], col: string, byReactions = false): Stack[] {
 	const inCol = cards.filter((c) => c.col === col);
