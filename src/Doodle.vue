@@ -394,7 +394,9 @@ button.on {
 canvas {
 	width: 100%;
 	aspect-ratio: 16 / 10;
-	background: var(--bg) radial-gradient(var(--dot) 1px, transparent 1px) 0 0 / 16px 16px;
+	/* Plain paper, the same as in the summary image; it doesn't take the mood tint like the page does. */
+	background: var(--surface) radial-gradient(color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px) 0 0 / 16px 16px;
+	border: 1.5px solid var(--border);
 	border-radius: 10px;
 	touch-action: none;
 	cursor: crosshair;
