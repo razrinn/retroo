@@ -4,6 +4,7 @@ import ConfirmButton from "./ConfirmButton.vue";
 import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
 import HostPin from "./HostPin.vue";
+import JoinView from "./JoinView.vue";
 import Icon from "./Icon.vue";
 import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
@@ -40,6 +41,11 @@ const joinError = ref("");
 const claiming = ref(false);
 const adminPassword = ref("");
 const pin = ref<{ value: string; until: number } | null>(null);
+// The big join view; opens by itself for whoever just created the board, so they can share the PIN first.
+const joinOpen = ref(false);
+// Links carry a PIN (invite) or a host key (host link) after "#": read once, then cleared from the address bar.
+const fromLink = new URLSearchParams(location.hash.slice(1));
+if (location.hash) history.replaceState(null, "", location.pathname + location.search);
 const presenting = ref(false);
 const summarizing = ref(false);
 // The next-MC picker: open from the header, or on everyone's screen when someone picks (to watch the show).
@@ -105,7 +111,10 @@ function onState(next: BoardState) {
 		if (open(prev) > 0 && open(next) === 0) confetti();
 	}
 	state.value = next;
-	if (next.host && !pin.value) askPin();
+	if (next.host && !pin.value) {
+		askPin();
+		if (justCreated) joinOpen.value = true;
+	}
 }
 
 // One short message at a time near the bottom; also read out by screen readers (role="status").
@@ -188,6 +197,13 @@ function denied() {
 async function joinWithPin() {
 	if (joining.value) return;
 	joinError.value = "";
+	// The name is asked on the same screen when this browser doesn't have one yet.
+	if (!name.value) {
+		const n = nameDraft.value.trim().slice(0, 40);
+		if (!n) return;
+		name.value = n;
+		save("name", n);
+	}
 	joining.value = true;
 	try {
 		// `legacy`: the id this browser used before passes, so your own older cards stay yours.
@@ -203,12 +219,12 @@ async function joinWithPin() {
 	}
 }
 // The create password makes you the host (lost host key, or a board from before hosts).
-async function becomeHost() {
+async function becomeHost(hostKey?: string) {
 	if (joining.value) return;
 	joinError.value = "";
 	joining.value = true;
 	try {
-		const res = await post<{ hostKey: string; pass: string }>(`/api/boards/${props.code}/host`, { password: adminPassword.value });
+		const res = await post<{ hostKey: string; pass: string }>(`/api/boards/${props.code}/host`, hostKey ? { hostKey } : { password: adminPassword.value });
 		save(hostKeyName, res.hostKey);
 		save(passKey, res.pass);
 		pass.value = res.pass;
@@ -222,6 +238,15 @@ async function becomeHost() {
 		joining.value = false;
 	}
 }
+// Opened from a link: a host link makes this device a host; an invite fills in the PIN (and joins right away
+// if we know your name).
+if (!props.demo && fromLink.get("host")) becomeHost(fromLink.get("host")!);
+else if (!props.demo && !pass.value && fromLink.get("pin")) {
+	pinDraft.value = fromLink.get("pin")!;
+	if (name.value) joinWithPin();
+	else setTimeout(() => document.querySelector<HTMLInputElement>('.gate input[aria-label="Your name"]')?.focus());
+}
+
 // The host asks for the PIN when it's due to change.
 let pinTimer = 0;
 function askPin() {
@@ -381,9 +406,9 @@ const justCreated = new URLSearchParams(location.search).has("new");
 if (justCreated) history.replaceState(null, "", location.pathname);
 const tour = ref<"join" | "run" | null>(null);
 watch(
-	() => !!state.value && !needsMood.value,
+	() => !!state.value && !needsMood.value && !joinOpen.value,
 	(ready) => {
-		if (!ready || tour.value) return;
+		if (!ready || tour.value || joinOpen.value) return;
 		if (justCreated && !load("tour-run")) tour.value = "run";
 		else if (!load("tour-join")) tour.value = "join";
 	},
@@ -439,12 +464,13 @@ const phaseLabel = computed(() =>
 			required
 			autofocus
 		/>
+		<input v-if="!name" v-model="nameDraft" maxlength="40" placeholder="Your name" aria-label="Your name" required />
 		<p v-if="joinError" :key="joinError" class="error" role="alert">{{ joinError }}</p>
 		<button class="primary" :aria-busy="joining">Join board</button>
 		<a href="#" class="small" @click.prevent="claiming = true; joinError = ''">I'm the host</a>
 	</form>
 
-	<form v-else-if="!pass" class="gate panel" @submit.prevent="becomeHost">
+	<form v-else-if="!pass" class="gate panel" @submit.prevent="becomeHost()">
 		<Mascot :size="64" class="gate-mascot" follow />
 		<h1>Host this board</h1>
 		<p class="muted">Use the password for creating boards.</p>
@@ -489,7 +515,7 @@ const phaseLabel = computed(() =>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
 			<span v-if="state.team?.host" class="host" title="This retro's MC, picked last sprint">👑 {{ state.team.host }}</span>
 			<div class="actions">
-			<HostPin v-if="state.host && !demo" :code="code" :pin="pin" :offset="offset" @reset="send({ type: 'reset' })" />
+			<HostPin v-if="state.host && !demo" :pin="pin" :offset="offset" @open="joinOpen = true" />
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
 				<span v-for="p in state.online.slice(0, 6)" :key="p" class="bubble" :class="{ typing: isTyping(p) }" :style="bubble(p)" :title="isTyping(p) ? `${p} is writing` : p">{{ initials(p) }}</span>
 				<span v-if="state.online.length > 6" class="bubble more">+{{ state.online.length - 6 }}</span>
@@ -691,7 +717,16 @@ const phaseLabel = computed(() =>
 		<div v-if="toast" :key="toast" class="toast" role="status" aria-live="polite">{{ toast }}</div>
 	</Transition>
 	<EmojiRain v-if="state && !needsMood" ref="rain" @send="(emoji) => send({ type: 'burst', emoji })" />
-	<Onboarding v-if="tour && state" :tour="tour" :live="state.live" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
+	<JoinView
+		v-if="joinOpen && state?.host && !demo"
+		:code="code"
+		:pin="pin"
+		:offset="offset"
+		:host-key="load(hostKeyName)"
+		@reset="send({ type: 'reset' })"
+		@close="joinOpen = false"
+	/>
+	<Onboarding v-if="tour && state && !joinOpen" :tour="tour" :live="state.live" :code="formatCode(code)" @close="endTour(false)" @done="endTour(true)" />
 	<Summary v-if="summarizing && state" :state="state" :code="formatCode(code)" :doodle="() => doodle?.snapshot() ?? null" @close="summarizing = false" />
 	<Picker v-if="pickerOpen && state?.team" :team="state.team" :locked="state.phase === 'locked'" :pick="pick" @send="send" @close="pickerOpen = false; pick = null" />
 	<Presenter v-if="presenting && state" :cards="state.cards" @close="presenting = false" @add-action="(text) => send({ type: 'add', col: 'action', text })" />

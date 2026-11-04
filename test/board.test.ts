@@ -520,6 +520,15 @@ test("joining: a pass is needed, the PIN is checked and limited, and the host ca
 	assert.equal(a.closed, 4001, "reset access disconnects everyone else");
 	assert.equal(h.s.host, true);
 	h.close();
+
+	// A host link: another device becomes a host too, and the first one stays host.
+	const link = await post(`/api/boards/${code}/host`, { hostKey: keys.get(code)!.hostKey });
+	assert.equal(link.status, 200);
+	const second = (await link.json()) as { hostKey: string; pass: string };
+	const both = await Promise.all([asHost(code), connect(code, "laptop", ["retroo", `pass.${second.pass}`, `host.${second.hostKey}`])]);
+	assert.deepEqual(both.map((x) => x.s.host), [true, true]);
+	both.forEach((x) => x.close());
+	assert.equal((await post(`/api/boards/${code}/host`, { hostKey: "nope" })).status, 403);
 });
 
 // Last: it locks out this address for create-password tries.

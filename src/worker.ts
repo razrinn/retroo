@@ -18,6 +18,7 @@ const MAX_STROKES = 2000;
 const MAX_CARDS = 400;
 const MAX_COMMENTS = 1500;
 const MAX_PASSES = 300;
+const MAX_HOST_KEYS = 20; // one per host device; the oldest is dropped past this
 // Per connection: at most this many messages in RATE_WINDOW ms; the rest are dropped.
 const RATE_LIMIT = 60;
 const RATE_WINDOW = 10_000;
@@ -164,8 +165,13 @@ export default {
 			return json({ error: "Wrong PIN. Check the host's screen; it changes every minute." }, 403);
 		}
 
-		// Become the host with the create password: for a lost host key, or boards made before hosts existed.
-		const body = await req.json<{ password?: string }>().catch(() => ({}) as never);
+		// Become a host: with a host link from another host device, or with the create password (a lost host key,
+		// or a board made before hosts existed).
+		const body = await req.json<{ password?: string; hostKey?: string }>().catch(() => ({}) as never);
+		if (body.hostKey) {
+			const keys = await board.redeemHostKey(String(body.hostKey));
+			return keys ? json(keys) : json({ error: "This host link doesn't work any more." }, 403);
+		}
 		const ok = await passwordOk(req, env, body.password);
 		if (ok !== "ok") return denied(ok);
 		return json(await board.becomeHost());
@@ -219,6 +225,7 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS roster (name TEXT PRIMARY KEY COLLATE NOCASE, had_turn INTEGER NOT NULL DEFAULT 0);
 			CREATE TABLE IF NOT EXISTS passes (hash TEXT PRIMARY KEY, client TEXT NOT NULL, created_at INTEGER NOT NULL);
+			CREATE TABLE IF NOT EXISTS hosts (hash TEXT PRIMARY KEY, created_at INTEGER NOT NULL);
 		`);
 		// Boards created before follow-ups tracked their source get the column added in place.
 		const cols = this.sql.exec<{ name: string }>("PRAGMA table_info(followups)").toArray().map((c) => c.name);
@@ -259,11 +266,21 @@ export class Board extends DurableObject<Env> {
 		return this.becomeHost();
 	}
 
-	// A new host key (only its hash is kept; the old one stops working) and a pass for whoever holds it.
+	// A host key for one more device (only its hash is kept; other hosts keep theirs) and a pass for it.
 	async becomeHost() {
 		const hostKey = randomKey();
-		this.setMeta("host_hash", await sha256(hostKey));
+		this.sql.exec("INSERT INTO hosts (hash, created_at) VALUES (?, ?)", await sha256(hostKey), Date.now());
+		this.sql.exec("DELETE FROM hosts WHERE hash NOT IN (SELECT hash FROM hosts ORDER BY created_at DESC LIMIT ?)", MAX_HOST_KEYS);
 		return { hostKey, pass: await this.issuePass(crypto.randomUUID()) };
+	}
+
+	async isHost(hostKey: string) {
+		return !!hostKey && this.sql.exec("SELECT 1 FROM hosts WHERE hash = ?", await sha256(hostKey)).toArray().length > 0;
+	}
+
+	// A host link opened on another device: that device becomes a host too, with its own key.
+	async redeemHostKey(hostKey: string) {
+		return (await this.isHost(hostKey)) ? this.becomeHost() : null;
 	}
 
 	async issuePass(client: string) {
@@ -445,7 +462,7 @@ export class Board extends DurableObject<Env> {
 		const client = pass
 			? this.sql.exec<{ client: string }>("SELECT client FROM passes WHERE hash = ?", await sha256(pass)).toArray()[0]?.client
 			: undefined;
-		const host = !!client && !!hostKey && (await sha256(hostKey)) === this.meta("host_hash");
+		const host = !!client && (await this.isHost(hostKey));
 
 		const { 0: browser, 1: server } = new WebSocketPair();
 		this.ctx.acceptWebSocket(server);

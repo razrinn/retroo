@@ -1,4 +1,4 @@
-import { type Ref, onMounted, onUnmounted } from "vue";
+import { type Ref, computed, onMounted, onUnmounted, ref } from "vue";
 
 export type Phase = "writing" | "revealed" | "locked";
 export type Reaction = { emoji: string; count: number; mine: boolean; names: string[] };
@@ -195,4 +195,19 @@ export function useFocusTrap(el: Ref<HTMLElement | undefined>) {
 		document.removeEventListener("keydown", onKey);
 		(before as HTMLElement | null)?.focus?.();
 	});
+}
+
+// The host's join PIN: "123 456" and the share of its minute still left (0..1), ticking. `until` is server
+// time; `offset` is server minus this clock.
+export type Pin = { value: string; until: number };
+export function usePinClock(pin: () => Pin | null, offset: () => number) {
+	const now = ref(Date.now());
+	let clock = 0;
+	onMounted(() => (clock = setInterval(() => (now.value = Date.now()), 250)));
+	onUnmounted(() => clearInterval(clock));
+	const p = computed(pin);
+	return {
+		digits: computed(() => (p.value ? `${p.value.value.slice(0, 3)} ${p.value.value.slice(3)}` : "··· ···")),
+		left: computed(() => (p.value ? Math.max(0, p.value.until - (now.value + offset())) / 60_000 : 0)),
+	};
 }

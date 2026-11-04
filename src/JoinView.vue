@@ -3,12 +3,25 @@ import { onMounted, onUnmounted, ref } from "vue";
 import ConfirmButton from "./ConfirmButton.vue";
 import Icon from "./Icon.vue";
 import Mascot from "./Mascot.vue";
-import { formatCode, useFocusTrap } from "./lib";
+import { type Pin, formatCode, useFocusTrap, usePinClock } from "./lib";
 
-// The big join view the host shares on screen: where to go, the PIN, and time left on it.
-const props = defineProps<{ code: string; digits: string; left: number }>();
+// The big join view the host shares on screen: where to go, the PIN, and time left on it. Also the links:
+// an invite with the PIN (for people not watching the screen) and a host link (to host from another device).
+// Both carry their secret after "#", which browsers never send to a server.
+const props = defineProps<{ code: string; pin: Pin | null; offset: number; hostKey: string }>();
 const emit = defineEmits<{ reset: []; close: [] }>();
+const { digits, left } = usePinClock(
+	() => props.pin,
+	() => props.offset,
+);
 const link = `${location.host}/b/${formatCode(props.code)}`;
+const copied = ref("");
+async function copy(what: "invite" | "host") {
+	const url = `${location.origin}/b/${formatCode(props.code)}#${what === "invite" ? `pin=${props.pin?.value}` : `host=${props.hostKey}`}`;
+	await navigator.clipboard?.writeText(url);
+	copied.value = what;
+	setTimeout(() => copied.value === what && (copied.value = ""), 1600);
+}
 
 const dialog = ref<HTMLElement>();
 useFocusTrap(dialog);
@@ -27,9 +40,17 @@ onUnmounted(() => removeEventListener("keydown", onKey));
 			<p class="digits mono" aria-live="polite">{{ digits }}</p>
 			<div class="bar" aria-hidden="true"><span :style="{ width: `${left * 100}%` }" /></div>
 			<p class="muted small">A new PIN every minute. Once you're in, you stay in.</p>
-			<ConfirmButton ask="Disconnect everyone? They'll need the new PIN." yes="Reset access" danger class="ghost small" @confirm="emit('reset')">
-				Reset access
-			</ConfirmButton>
+			<div class="row links">
+				<button class="icon-btn" :disabled="!pin" title="Copy a join link with this PIN (works for about 2 minutes)" @click="copy('invite')">
+					<Icon name="copy" /><span class="lbl">{{ copied === "invite" ? "Copied" : "Copy invite" }}</span>
+				</button>
+				<button class="ghost icon-btn" title="Copy a link that makes another device a host too. Keep it to yourself." @click="copy('host')">
+					<Icon name="key" /><span class="lbl">{{ copied === "host" ? "Copied" : "Copy host link" }}</span>
+				</button>
+				<ConfirmButton ask="Disconnect everyone? They'll need the new PIN." yes="Reset access" danger class="ghost small" @confirm="emit('reset')">
+					Reset access
+				</ConfirmButton>
+			</div>
 		</article>
 	</div>
 </template>
@@ -96,5 +117,11 @@ h1 {
 }
 .small {
 	font-size: 13px;
+}
+.links {
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 6px;
+	margin-top: 6px;
 }
 </style>
