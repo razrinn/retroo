@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import Mascot from "./Mascot.vue";
-import { GITHUB_URL, type ListedBoard, formatCode, normalizeCode, post } from "./lib";
+import { GITHUB_URL, type ListedBoard, formatCode, normalizeCode, post, save } from "./lib";
 
 const joinCode = ref("");
 const title = ref("");
@@ -39,7 +39,15 @@ async function create() {
 	error.value = "";
 	creating.value = true;
 	try {
-		const { code } = await post<{ code: string }>("/api/boards", { title: title.value, password: password.value, previous: previous.value, hidden: hidden.value });
+		const { code, hostKey, pass } = await post<{ code: string; hostKey: string; pass: string }>("/api/boards", {
+			title: title.value,
+			password: password.value,
+			previous: previous.value,
+			hidden: hidden.value,
+		});
+		// You made it, so you host it: the host key shows you the join PIN, the pass lets you in.
+		save(`host:${code}`, hostKey);
+		save(`pass:${code}`, pass);
 		location.href = `/b/${code}?new`; // ?new shows the "Running a retro" tour once
 	} catch (e) {
 		error.value = (e as Error).message;

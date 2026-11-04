@@ -21,25 +21,32 @@ const post = (path: string, body: object) =>
 	fetch(base + path, { method: "POST", body: JSON.stringify(body) });
 
 // Most tests exercise the hidden style (writing → reveal); pass { hidden: false } for a Live board.
+// The creator's host key and pass are kept per board, so tests can act as the host.
+const keys = new Map<string, { hostKey: string; pass: string }>();
 async function create(previous = "", extra: object = {}) {
 	const res = await post("/api/boards", { password: PASSWORD, title: "Test", previous, hidden: true, ...extra });
 	assert.equal(res.status, 200);
-	return ((await res.json()) as { code: string }).code;
+	const { code, hostKey, pass } = (await res.json()) as { code: string; hostKey: string; pass: string };
+	keys.set(code, { hostKey, pass });
+	return code;
 }
 
 type State = Record<string, any>;
-async function join(code: string, client: string) {
-	const ws = new WebSocket(`${base.replace("http", "ws")}/api/boards/${code}/ws?client=${client}&name=${client.split("-")[0]}`);
+// A socket on the board with the given pass (and host key), as `name`.
+async function connect(code: string, name: string, protocols: string[]) {
+	const ws = new WebSocket(`${base.replace("http", "ws")}/api/boards/${code}/ws?name=${name}`, protocols);
 	let state: State = {};
 	// Full board states carry a phase; everything else (emoji rain, doodle strokes) is an event.
 	const events: State[] = [];
 	let seen = 0;
+	let closed = 0;
 	ws.onmessage = (e) => {
 		const data = JSON.parse(e.data);
 		if ("phase" in data) state = data;
 		else events.push(data);
 		seen++;
 	};
+	ws.onclose = (e) => (closed = e.code);
 	await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
 	// Waits for the broadcast that follows a message (or a short idle, for messages the server ignores).
 	const settle = async () => {
@@ -51,6 +58,9 @@ async function join(code: string, client: string) {
 		get s() {
 			return state;
 		},
+		get closed() {
+			return closed;
+		},
 		events,
 		get bursts() {
 			return events.filter((e) => e.burst);
@@ -59,8 +69,38 @@ async function join(code: string, client: string) {
 			ws.send(JSON.stringify(msg));
 			await settle();
 		},
+		settle,
 		close: () => ws.close(),
 	};
+}
+const asHost = (code: string) => {
+	const k = keys.get(code)!;
+	return connect(code, "host", ["retroo", `pass.${k.pass}`, `host.${k.hostKey}`]);
+};
+// The PIN on the host's screen right now.
+async function pinFor(code: string) {
+	const h = await asHost(code);
+	await h.send({ type: "pin" });
+	h.close();
+	return h.events.find((e) => e.pin).pin.value as string;
+}
+// Joins like a person does: PIN from the host's screen, then connect with the pass. Like a browser, the same
+// person keeps their pass for the board and doesn't need the PIN again.
+const passes = new Map<string, string>();
+async function join(code: string, client: string) {
+	let pass = passes.get(`${code}/${client}`);
+	if (!pass) {
+		const res = await post(`/api/boards/${code}/join`, { pin: await pinFor(code) });
+		assert.equal(res.status, 200);
+		pass = ((await res.json()) as { pass: string }).pass;
+		passes.set(`${code}/${client}`, pass);
+	}
+	return connect(code, client.split("-")[0], ["retroo", `pass.${pass}`]);
+}
+async function lock(code: string, locked: boolean) {
+	const h = await asHost(code);
+	await h.send({ type: "lock", locked });
+	h.close();
 }
 
 test("create and list need the password", async () => {
@@ -111,8 +151,10 @@ test("hidden text, phases, reactions and ownership", async () => {
 	await a.send({ type: "delete", id: well.id });
 	assert.equal(a.s.cards.length, 3, "no deleting after reveal");
 
-	assert.equal((await post(`/api/boards/${code}/lock`, { password: "nope", locked: true })).status, 403);
-	assert.equal((await post(`/api/boards/${code}/lock`, { password: PASSWORD, locked: true })).status, 200);
+	await a.send({ type: "lock", locked: true }); // not the host: ignored
+	assert.notEqual(a.s.phase, "locked");
+	await lock(code, true);
+	await a.settle();
 	await a.send({ type: "add", col: "well", text: "late" });
 	await a.send({ type: "mood", value: 3 });
 	assert.equal(a.s.phase, "locked");
@@ -291,7 +333,7 @@ test("doodle: valid strokes only, sent on their own, undo your own, no clearing,
 	assert.equal(a.events.at(-1)!.doodle.length, 1);
 
 	await b.send({ type: "clear" }); // there is no clear-all
-	await post(`/api/boards/${code}/lock`, { password: PASSWORD, locked: true });
+	await lock(code, true);
 	await a.send({ type: "stroke", stroke: line });
 	await a.send({ type: "undo" });
 	await a.send({ type: "doodle" });
@@ -371,7 +413,7 @@ test("live boards: cards visible as written, reactions and mood right away, no t
 
 test("unknown boards are 404", async () => {
 	await assert.rejects(join("AAAA-BBBB", "alice-0005"));
-	assert.equal((await post("/api/boards/AAAA-BBBB/lock", { password: PASSWORD, locked: true })).status, 404);
+	assert.equal((await post("/api/boards/AAAA-BBBB/join", { pin: "123456" })).status, 404);
 });
 
 test("stacking groups cards in one column, only while cards are visible", async () => {
@@ -454,4 +496,37 @@ test("next MC: roster, a shared pick, and the rotation and show carry to the nex
 	await b.send({ type: "roster_add", text: "New hire" });
 	assert.deepEqual(b.s.team.roster.map((m: State) => m.name), ["Dina", "Budi", "New hire"].filter((n) => n !== "Sari"));
 	b.close();
+});
+
+test("joining: a pass is needed, the PIN is checked and limited, and the host can reset access", async () => {
+	const code = await create("", { hidden: false });
+	const stranger = await connect(code, "eve", ["retroo"]);
+	assert.ok(!stranger.s.cards, "no pass: told nothing about the board");
+	assert.deepEqual(stranger.events, [{ denied: true }]);
+
+	const a = await join(code, "alice-0013");
+	await a.send({ type: "add", col: "well", text: "hi" });
+	await a.send({ type: "pin" }); // only the host sees the PIN
+	assert.ok(!a.events.some((e) => e.pin));
+
+	const pin = await pinFor(code);
+	const wrong = pin === "000000" ? "000001" : "000000";
+	for (let i = 0; i < 10; i++) assert.equal((await post(`/api/boards/${code}/join`, { pin: wrong })).status, 403);
+	assert.equal((await post(`/api/boards/${code}/join`, { pin })).status, 429, "too many wrong PINs: even the right one waits");
+
+	const h = await asHost(code);
+	await h.send({ type: "reset" });
+	await new Promise((r) => setTimeout(r, 100));
+	assert.equal(a.closed, 4001, "reset access disconnects everyone else");
+	assert.equal(h.s.host, true);
+	h.close();
+});
+
+// Last: it locks out this address for create-password tries.
+test("the create password allows 10 wrong tries per address, then waits", async () => {
+	// Earlier tests already spent a couple of tries.
+	const statuses = [];
+	for (let i = 0; i < 11; i++) statuses.push((await post("/api/boards", { password: "nope" })).status);
+	assert.ok(statuses.slice(0, 8).every((x) => x === 403) && statuses.at(-1) === 429);
+	assert.equal((await post("/api/boards/list", { password: PASSWORD })).status, 429, "even the right password waits");
 });

@@ -14,6 +14,20 @@ const MAX_DOODLE_TEXT = 60;
 const SHOWS = ["wheel", "cars", "horses", "balloons", "slots", "plinko", "claw", "ducks", "potato", "lottery"];
 const MAX_ROSTER = 30;
 const MAX_STROKES = 2000;
+// Per board, so one script can't flood it.
+const MAX_CARDS = 400;
+const MAX_COMMENTS = 1500;
+const MAX_PASSES = 300;
+// Per connection: at most this many messages in RATE_WINDOW ms; the rest are dropped.
+const RATE_LIMIT = 60;
+const RATE_WINDOW = 10_000;
+// Joining: a 6-digit PIN from the host's screen that changes every minute (the previous one still works),
+// and at most PIN_TRIES wrong guesses per board per minute.
+const PIN_STEP = 60_000;
+const PIN_TRIES = 10;
+// The create password: at most this many wrong tries per address per GATE_WINDOW.
+const GATE_TRIES = 10;
+const GATE_WINDOW = 15 * 60_000;
 const MAX_POINTS = 500;
 
 type Phase = "writing" | "revealed" | "locked";
@@ -24,13 +38,31 @@ type Member = { name: string; had_turn: number };
 type Team = { roster: Member[]; mc: string | null; show: string | null };
 type CarryOver = { title: string; mood: number | null; items: FollowUp[]; team?: Team };
 type Stroke = { c: string; w: number; p: [number, number][]; b?: string; t?: string };
-type Msg = { type: string; stroke?: Stroke; id?: string; onto?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string };
+type Msg = { type: string; stroke?: Stroke; id?: string; onto?: string; col?: string; text?: string; name?: string; status?: string; value?: number; seconds?: number; emoji?: string; locked?: boolean };
 
-const json = (data: unknown, status = 200) => Response.json(data, { status });
+const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" } });
+
+// Random keys (host keys, member passes, the PIN secret) and how they're stored: only a hash is kept.
+const randomKey = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(24)))).replace(/\+/g, "-").replace(/\//g, "_");
+async function sha256(s: string) {
+	const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+	return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// The join PIN for a one-minute step: HMAC of the step with the board's secret, as 6 digits (like an authenticator app).
+async function pinAt(secret: string, step: number) {
+	const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+	const mac = new DataView(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(step))));
+	return String(mac.getUint32(0) % 1_000_000).padStart(6, "0");
+}
 
 function newCode() {
-	const bytes = crypto.getRandomValues(new Uint8Array(8));
-	return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+	// Rejection sampling, so every character is equally likely.
+	let code = "";
+	while (code.length < 8) {
+		const b = crypto.getRandomValues(new Uint8Array(1))[0];
+		if (b < 248) code += CODE_ALPHABET[b % CODE_ALPHABET.length];
+	}
+	return code;
 }
 
 // Codes are 8 plain characters; "k7qm-4xpt" and "K7QM 4XPT" mean the same board. The dash is only for display.
@@ -60,6 +92,28 @@ async function ensureIndex(env: Env) {
 // The binding names this Worker by string, so cf can't infer the class; tell TS which one it is.
 const boardStub = (env: Env, code: string) => env.BOARD.getByName(code) as DurableObjectStub<Board>;
 
+// Only boards in the index reach a Durable Object, so guessing codes never creates storage.
+async function exists(env: Env, code: string) {
+	try {
+		return !!(await env.DB.prepare("SELECT 1 FROM boards WHERE code = ?").bind(code).first());
+	} catch {
+		return false; // no index yet: no boards
+	}
+}
+
+// Wrong create-password tries are counted per address in one small Durable Object ("gate").
+const gate = (env: Env) => boardStub(env, "gate");
+const ipOf = (req: Request) => req.headers.get("CF-Connecting-IP") ?? "unknown";
+async function passwordOk(req: Request, env: Env, given: unknown) {
+	const ip = ipOf(req);
+	if (await gate(env).gateBlocked(ip)) return "blocked";
+	if (await checkPassword(given, env)) return "ok";
+	await gate(env).gateFail(ip);
+	return "wrong";
+}
+const denied = (result: string) =>
+	result === "blocked" ? json({ error: "Too many wrong tries. Wait 15 minutes." }, 429) : json({ error: "Wrong password" }, 403);
+
 export default {
 	async fetch(req, env) {
 		const url = new URL(req.url);
@@ -67,40 +121,54 @@ export default {
 
 		if (req.method === "POST" && path === "/api/boards") {
 			const body = await req.json<{ password?: string; title?: string; previous?: string; hidden?: boolean }>().catch(() => ({}) as never);
-			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
+			const ok = await passwordOk(req, env, body.password);
+			if (ok !== "ok") return denied(ok);
 			const title = String(body.title ?? "").trim().slice(0, 100);
-			const previous = body.previous ? normalizeCode(String(body.previous)) : null;
+			const asked = body.previous ? normalizeCode(String(body.previous)) : null;
+			const previous = asked && (await exists(env, asked)) ? asked : null;
 			const carried = previous ? await boardStub(env, previous).carryOver() : null;
 			const code = newCode();
 			await ensureIndex(env);
 			await env.DB.prepare("INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)")
 				.bind(code, title, Date.now())
 				.run();
-			await boardStub(env, code).init(title, carried, previous, code, body.hidden === true);
-			return json({ code });
+			// The creator is the host: a host key for host-only controls, and a pass to join their own board.
+			const keys = await boardStub(env, code).init(title, carried, previous, code, body.hidden === true);
+			return json({ code, ...keys });
 		}
 
 		if (req.method === "POST" && path === "/api/boards/list") {
 			const body = await req.json<{ password?: string }>().catch(() => ({}) as never);
-			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
+			const ok = await passwordOk(req, env, body.password);
+			if (ok !== "ok") return denied(ok);
 			await ensureIndex(env);
 			const { results } = await env.DB.prepare("SELECT code, title, created_at, mood FROM boards ORDER BY created_at DESC").all();
 			return json(results);
 		}
 
-		const m = path.match(/^\/api\/boards\/([^/]+)\/(ws|lock)$/);
+		const m = path.match(/^\/api\/boards\/([^/]+)\/(ws|join|host)$/);
 		const code = m && normalizeCode(m[1]);
-		if (!m || !code) return json({ error: "Not found" }, 404);
+		if (!m || !code || !(await exists(env, code))) return json({ error: "Not found" }, 404);
 		const board = boardStub(env, code);
 
 		if (m[2] === "ws") return board.fetch(req);
+		if (req.method !== "POST") return json({ error: "Not found" }, 404);
 
-		if (req.method === "POST") {
-			const body = await req.json<{ password?: string; locked?: boolean }>().catch(() => ({}) as never);
-			if (!(await checkPassword(body.password, env))) return json({ error: "Wrong password" }, 403);
-			return (await board.setLocked(!!body.locked)) ? json({ ok: true }) : json({ error: "Not found" }, 404);
+		// Join with the PIN from the host's screen; you get a pass for this board.
+		if (m[2] === "join") {
+			const body = await req.json<{ pin?: string; legacy?: string }>().catch(() => ({}) as never);
+			const result = await board.join(String(body.pin ?? ""), String(body.legacy ?? ""));
+			if ("pass" in result) return json(result);
+			if (result.error === "wait") return json({ error: "Too many wrong PINs. Wait a minute and try the new one." }, 429);
+			if (result.error === "full") return json({ error: "This board is full." }, 403);
+			return json({ error: "Wrong PIN. Check the host's screen; it changes every minute." }, 403);
 		}
-		return json({ error: "Not found" }, 404);
+
+		// Become the host with the create password: for a lost host key, or boards made before hosts existed.
+		const body = await req.json<{ password?: string }>().catch(() => ({}) as never);
+		const ok = await passwordOk(req, env, body.password);
+		if (ok !== "ok") return denied(ok);
+		return json(await board.becomeHost());
 	},
 } satisfies ExportedHandler<Env>;
 
@@ -150,6 +218,7 @@ export class Board extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS strokes (id TEXT PRIMARY KEY, author TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS moods (person TEXT PRIMARY KEY, value INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS roster (name TEXT PRIMARY KEY COLLATE NOCASE, had_turn INTEGER NOT NULL DEFAULT 0);
+			CREATE TABLE IF NOT EXISTS passes (hash TEXT PRIMARY KEY, client TEXT NOT NULL, created_at INTEGER NOT NULL);
 		`);
 		// Boards created before follow-ups tracked their source get the column added in place.
 		const cols = this.sql.exec<{ name: string }>("PRAGMA table_info(followups)").toArray().map((c) => c.name);
@@ -174,17 +243,86 @@ export class Board extends DurableObject<Env> {
 
 	// Live boards (the default) start open: cards are visible as they're written, reactions and mood results
 	// right away. Hidden boards start in "writing" and flip everything over at Reveal.
-	init(title: string, previous: CarryOver | null, previousCode: string | null, code: string, hidden: boolean) {
+	async init(title: string, previous: CarryOver | null, previousCode: string | null, code: string, hidden: boolean) {
 		this.setMeta("title", title);
+		this.setMeta("secret", randomKey());
 		this.setMeta("phase", hidden ? "writing" : "revealed");
 		if (!hidden) this.setMeta("live", "1");
 		this.setMeta("code", code);
-		if (!previous || !previousCode) return;
-		this.setMeta("previous_code", previousCode);
-		this.setMeta("previous_title", previous.title);
-		if (previous.mood !== null) this.setMeta("previous_mood", String(previous.mood));
-		this.mergeFollowUps(previous.items);
-		if (previous.team) this.takeTeam(previous.team);
+		if (previous && previousCode) {
+			this.setMeta("previous_code", previousCode);
+			this.setMeta("previous_title", previous.title);
+			if (previous.mood !== null) this.setMeta("previous_mood", String(previous.mood));
+			this.mergeFollowUps(previous.items);
+			if (previous.team) this.takeTeam(previous.team);
+		}
+		return this.becomeHost();
+	}
+
+	// A new host key (only its hash is kept; the old one stops working) and a pass for whoever holds it.
+	async becomeHost() {
+		const hostKey = randomKey();
+		this.setMeta("host_hash", await sha256(hostKey));
+		return { hostKey, pass: await this.issuePass(crypto.randomUUID()) };
+	}
+
+	async issuePass(client: string) {
+		const pass = randomKey();
+		this.sql.exec("INSERT INTO passes (hash, client, created_at) VALUES (?, ?, ?)", await sha256(pass), client, Date.now());
+		return pass;
+	}
+
+	// Boards from before join PINs get their secret the first time it's needed.
+	secret() {
+		let secret = this.meta("secret");
+		if (!secret) this.setMeta("secret", (secret = randomKey()));
+		return secret;
+	}
+
+	async currentPin() {
+		const step = Math.floor(Date.now() / PIN_STEP);
+		return { value: await pinAt(this.secret(), step), until: (step + 1) * PIN_STEP };
+	}
+
+	// Joining with the PIN. `legacy` is the browser id someone used before passes existed: they keep their
+	// own cards if that id has been here and has no pass yet.
+	async join(pin: string, legacy: string): Promise<{ pass: string } | { error: "pin" | "wait" | "full" }> {
+		const minute = String(Math.floor(Date.now() / 60_000));
+		if (this.meta("pin_minute") !== minute) {
+			this.setMeta("pin_minute", minute);
+			this.setMeta("pin_fails", "0");
+		}
+		if (Number(this.meta("pin_fails")) >= PIN_TRIES) return { error: "wait" };
+		const step = Math.floor(Date.now() / PIN_STEP);
+		const ok = /^\d{6}$/.test(pin) && (pin === (await pinAt(this.secret(), step)) || pin === (await pinAt(this.secret(), step - 1)));
+		if (!ok) {
+			this.setMeta("pin_fails", String(Number(this.meta("pin_fails")) + 1));
+			return { error: "pin" };
+		}
+		if (this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM passes").one().n >= MAX_PASSES) return { error: "full" };
+		const known =
+			/^[\w-]{8,64}$/.test(legacy) &&
+			this.sql.exec("SELECT 1 FROM people WHERE id = ?", legacy).toArray().length > 0 &&
+			this.sql.exec("SELECT 1 FROM passes WHERE client = ?", legacy).toArray().length === 0;
+		return { pass: await this.issuePass(known ? legacy : crypto.randomUUID()) };
+	}
+
+	// The gate: wrong create-password tries per address (only used by the Durable Object named "gate").
+	gateBlocked(ip: string) {
+		this.sql.exec("CREATE TABLE IF NOT EXISTS gate (ip TEXT PRIMARY KEY, fails INTEGER NOT NULL, since INTEGER NOT NULL)");
+		const row = this.sql.exec<{ fails: number; since: number }>("SELECT fails, since FROM gate WHERE ip = ?", ip).toArray()[0];
+		return !!row && Date.now() - row.since < GATE_WINDOW && row.fails >= GATE_TRIES;
+	}
+	gateFail(ip: string) {
+		this.sql.exec("CREATE TABLE IF NOT EXISTS gate (ip TEXT PRIMARY KEY, fails INTEGER NOT NULL, since INTEGER NOT NULL)");
+		const now = Date.now();
+		this.sql.exec(
+			`INSERT INTO gate (ip, fails, since) VALUES (?, 1, ?)
+			ON CONFLICT(ip) DO UPDATE SET fails = CASE WHEN ? - since < ? THEN fails + 1 ELSE 1 END,
+				since = CASE WHEN ? - since < ? THEN since ELSE ? END`,
+			ip, now, now, GATE_WINDOW, now, GATE_WINDOW, now,
+		);
+		this.sql.exec("DELETE FROM gate WHERE ? - since > ?", now, GATE_WINDOW);
 	}
 
 	// The roster and rotation continue from the previous board, and its pick is this retro's MC. Until someone
@@ -299,17 +437,31 @@ export class Board extends DurableObject<Env> {
 		if (!this.phase) return new Response("Board not found", { status: 404 });
 		if (req.headers.get("Upgrade") !== "websocket") return new Response("Expected WebSocket", { status: 426 });
 
-		const url = new URL(req.url);
-		const client = url.searchParams.get("client") ?? "";
-		if (!/^[\w-]{8,64}$/.test(client)) return new Response("Bad client id", { status: 400 });
-		this.setName(client, url.searchParams.get("name"));
-		await this.pullFromPrevious();
+		// The pass (and the host key, for the host) ride in the WebSocket subprotocols, so they never sit in a URL.
+		const offered = (req.headers.get("Sec-WebSocket-Protocol") ?? "").split(",").map((p) => p.trim());
+		const key = (prefix: string) => offered.find((p) => p.startsWith(prefix))?.slice(prefix.length) ?? "";
+		const pass = key("pass.");
+		const hostKey = key("host.");
+		const client = pass
+			? this.sql.exec<{ client: string }>("SELECT client FROM passes WHERE hash = ?", await sha256(pass)).toArray()[0]?.client
+			: undefined;
+		const host = !!client && !!hostKey && (await sha256(hostKey)) === this.meta("host_hash");
 
 		const { 0: browser, 1: server } = new WebSocketPair();
 		this.ctx.acceptWebSocket(server);
-		server.serializeAttachment({ client });
+		const headers = { "Sec-WebSocket-Protocol": "retroo" };
+		// No valid pass (never joined, or the host reset access): say so and close, so the page asks for the PIN.
+		if (!client) {
+			// It can't be closed before the handshake completes: the page closes it on `denied`, and it gets nothing
+			// meanwhile (no attachment); anything it sends closes it.
+			server.send(JSON.stringify({ denied: true }));
+			return new Response(null, { status: 101, webSocket: browser, headers });
+		}
+		this.setName(client, new URL(req.url).searchParams.get("name"));
+		await this.pullFromPrevious();
+		server.serializeAttachment({ client, host });
 		this.broadcast();
-		return new Response(null, { status: 101, webSocket: browser });
+		return new Response(null, { status: 101, webSocket: browser, headers });
 	}
 
 	setName(client: string, raw: unknown) {
@@ -317,8 +469,24 @@ export class Board extends DurableObject<Env> {
 		this.sql.exec("INSERT INTO people (id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name", client, name);
 	}
 
-	webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
-		const { client } = ws.deserializeAttachment() as { client: string };
+	// Message counts per person in the current window, for the rate limit. ponytail: in memory, resets when the
+	// object hibernates, which only ever makes it more lenient.
+	rate = new Map<string, { start: number; n: number }>();
+	limited(client: string) {
+		const now = Date.now();
+		const r = this.rate.get(client);
+		if (!r || now - r.start > RATE_WINDOW) {
+			this.rate.set(client, { start: now, n: 1 });
+			return false;
+		}
+		return ++r.n > RATE_LIMIT;
+	}
+
+	async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+		const att = ws.deserializeAttachment() as { client: string; host?: boolean } | null;
+		if (!att) return ws.close(4001, "Join with the PIN");
+		if (this.limited(att.client)) return;
+		const { client, host } = att;
 		let msg: Msg;
 		try {
 			msg = JSON.parse(String(raw));
@@ -337,6 +505,7 @@ export class Board extends DurableObject<Env> {
 				break;
 			case "add":
 				if (phase === "locked" || !text || !COLS.includes(String(msg.col))) return;
+				if (this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM cards").one().n >= MAX_CARDS) return;
 				this.sql.exec("INSERT INTO cards (id, col, text, author, created_at) VALUES (?, ?, ?, ?, ?)", crypto.randomUUID(), msg.col, text, client, Date.now());
 				break;
 			case "edit":
@@ -380,6 +549,7 @@ export class Board extends DurableObject<Env> {
 				const col = cardCol(msg.id);
 				const body = typeof msg.text === "string" ? msg.text.trim().slice(0, MAX_COMMENT) : "";
 				if (phase === "locked" || !col || !body || (phase === "writing" && col !== "action")) return;
+				if (this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM comments").one().n >= MAX_COMMENTS) return;
 				this.sql.exec("INSERT INTO comments (id, card, author, text, created_at) VALUES (?, ?, ?, ?, ?)", crypto.randomUUID(), msg.id, client, body, Date.now());
 				break;
 			}
@@ -415,8 +585,7 @@ export class Board extends DurableObject<Env> {
 				this.recentBursts.set(client, [...recent, now]);
 				// `from` is an opaque per-person tag so combos can count different people even when names are hidden.
 				const name = this.sql.exec<{ name: string }>("SELECT name FROM people WHERE id = ?", client).toArray()[0]?.name ?? "";
-				const out = JSON.stringify({ burst: msg.emoji, name, from: tag(client) });
-				for (const s of this.ctx.getWebSockets()) if (s.readyState === WebSocket.OPEN) s.send(out);
+				this.toEach(() => ({ burst: msg.emoji, name, from: tag(client) }));
 				return;
 			}
 			// Doodle wall: strokes go out one at a time, separate from the board state, so a big drawing never
@@ -482,6 +651,24 @@ export class Board extends DurableObject<Env> {
 				this.toEach((c) => (c === client ? null : { typing: name }));
 				return;
 			}
+			// Host only: the current join PIN (just to the host), lock and unlock, and resetting access.
+			case "pin":
+				if (host) ws.send(JSON.stringify({ pin: await this.currentPin() }));
+				return;
+			case "lock":
+				if (host) this.setLocked(!!msg.locked);
+				return;
+			case "reset": {
+				// Everyone else's pass stops working; they're disconnected and rejoin with the new PIN.
+				if (!host) return;
+				this.sql.exec("DELETE FROM passes WHERE client != ?", client);
+				this.setMeta("secret", randomKey());
+				for (const s of this.ctx.getWebSockets()) {
+					if ((s.deserializeAttachment() as { client: string } | null)?.client !== client) s.close(4001, "Access was reset");
+				}
+				ws.send(JSON.stringify({ pin: await this.currentPin() }));
+				break;
+			}
 			case "reveal":
 				if (phase !== "writing") return;
 				this.setMeta("phase", "revealed");
@@ -493,23 +680,26 @@ export class Board extends DurableObject<Env> {
 		this.broadcast();
 	}
 
-	// Sends a per-person message to every open socket (no full board state).
-	// Sends a per-person message to every open socket (no full board state); null skips that person.
+	// Sends a per-person message to every joined socket (no full board state); null skips that person.
 	toEach(build: (client: string) => unknown) {
 		for (const s of this.ctx.getWebSockets()) {
-			if (s.readyState !== WebSocket.OPEN) continue;
-			const msg = build((s.deserializeAttachment() as { client: string }).client);
+			const att = s.deserializeAttachment() as { client: string } | null;
+			if (s.readyState !== WebSocket.OPEN || !att) continue;
+			const msg = build(att.client);
 			if (msg !== null) s.send(JSON.stringify(msg));
 		}
 	}
 
-	webSocketClose() {
+	webSocketClose(ws: WebSocket) {
+		const att = ws.deserializeAttachment() as { client: string } | null;
+		if (att) this.rate.delete(att.client);
 		this.broadcast();
 	}
 
 	// ponytail: sends the whole board on every change, send diffs if boards grow past a few hundred cards
 	broadcast() {
-		const sockets = this.ctx.getWebSockets().filter((ws) => ws.readyState === WebSocket.OPEN);
+		// Sockets turned away for having no pass carry no attachment; they get nothing.
+		const sockets = this.ctx.getWebSockets().filter((ws) => ws.readyState === WebSocket.OPEN && ws.deserializeAttachment());
 		const clients = sockets.map((ws) => (ws.deserializeAttachment() as { client: string }).client);
 		const names = (ids: string[]) =>
 			ids.length
@@ -553,6 +743,7 @@ export class Board extends DurableObject<Env> {
 			const me = clients[i];
 			ws.send(
 				JSON.stringify({
+					host: !!(ws.deserializeAttachment() as { host?: boolean }).host,
 					title,
 					previousTitle,
 					followUps,

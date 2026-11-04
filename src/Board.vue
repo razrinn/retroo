@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch, watchEffect } from "vue";
 import ConfirmButton from "./ConfirmButton.vue";
 import Doodle from "./Doodle.vue";
 import EmojiRain from "./EmojiRain.vue";
+import HostPin from "./HostPin.vue";
 import Icon from "./Icon.vue";
 import Mascot from "./Mascot.vue";
 import NoteCard from "./NoteCard.vue";
@@ -28,9 +29,17 @@ const state = ref<BoardState | null>(null);
 // connecting: first try · open · retrying: lost the connection, trying again · missing: no such board
 const status = ref<"connecting" | "open" | "retrying" | "missing">("connecting");
 const drafts = ref<Record<string, string>>({});
-const error = ref("");
-const showLock = ref(false);
-const lockPassword = ref("");
+// Access: a pass for this board, from joining with the host's PIN, kept in this browser. The host also has a
+// host key (from creating the board, or from the create password) for the PIN and host-only controls.
+const passKey = `pass:${props.code}`;
+const hostKeyName = `host:${props.code}`;
+const pass = ref(props.demo ? "demo" : load(passKey));
+const pinDraft = ref("");
+const joining = ref(false);
+const joinError = ref("");
+const claiming = ref(false);
+const adminPassword = ref("");
+const pin = ref<{ value: string; until: number } | null>(null);
 const presenting = ref(false);
 const summarizing = ref(false);
 // The next-MC picker: open from the header, or on everyone's screen when someone picks (to watch the show).
@@ -96,6 +105,7 @@ function onState(next: BoardState) {
 		if (open(prev) > 0 && open(next) === 0) confetti();
 	}
 	state.value = next;
+	if (next.host && !pin.value) askPin();
 }
 
 // One short message at a time near the bottom; also read out by screen readers (role="status").
@@ -116,7 +126,12 @@ function onOpen() {
 }
 function onMessage(data: any) {
 	// Full board states carry a phase; emoji rain and doodle strokes are small events of their own.
-	if ("phase" in data) onState(data);
+	if (data.denied) denied();
+	else if (data.pin) {
+		pin.value = data.pin;
+		clearTimeout(pinTimer);
+		pinTimer = setTimeout(askPin, Math.max(1000, data.pin.until - (Date.now() + offset.value) + 300));
+	} else if ("phase" in data) onState(data);
 	else if ("typing" in data) typingUntil.value = { ...typingUntil.value, [data.typing]: Date.now() + 4000 };
 	else if (data.burst) rain.value?.drop(data.burst, data.name, data.from);
 	else if (data.pick) {
@@ -132,13 +147,20 @@ function connect() {
 		return;
 	}
 	const proto = location.protocol === "https:" ? "wss" : "ws";
-	const q = new URLSearchParams({ client: clientId, name: name.value });
-	const socket = new WebSocket(`${proto}://${location.host}/api/boards/${props.code}/ws?${q}`);
+	const q = new URLSearchParams({ name: name.value });
+	// The pass and host key go in the subprotocols, not the URL.
+	const hostKey = load(hostKeyName);
+	const socket = new WebSocket(`${proto}://${location.host}/api/boards/${props.code}/ws?${q}`, [
+		"retroo",
+		`pass.${pass.value}`,
+		...(hostKey ? [`host.${hostKey}`] : []),
+	]);
 	ws = socket;
 	socket.onopen = onOpen;
 	socket.onmessage = (e) => onMessage(JSON.parse(e.data));
-	socket.onclose = async () => {
-		if (stopped) return;
+	socket.onclose = async (e) => {
+		if (stopped || !pass.value) return;
+		if (e.code === 4001) return denied();
 		// Only call a board missing when the server says so (404); anything else is the network, so retry.
 		if (!everOpened) {
 			const res = await fetch(`/api/boards/${props.code}/ws`).catch(() => null);
@@ -152,7 +174,61 @@ onUnmounted(() => {
 	stopped = true;
 	ws?.close();
 });
-if (name.value) connect();
+if (name.value && pass.value) connect();
+
+// Turned away (never joined here, or the host reset access): forget the pass and ask for the PIN.
+function denied() {
+	save(passKey, "");
+	pass.value = "";
+	state.value = null;
+	status.value = "connecting";
+	everOpened = false;
+	ws?.close();
+}
+async function joinWithPin() {
+	if (joining.value) return;
+	joinError.value = "";
+	joining.value = true;
+	try {
+		// `legacy`: the id this browser used before passes, so your own older cards stay yours.
+		const res = await post<{ pass: string }>(`/api/boards/${props.code}/join`, { pin: pinDraft.value.replace(/\D/g, ""), legacy: clientId });
+		save(passKey, res.pass);
+		pass.value = res.pass;
+		pinDraft.value = "";
+		if (name.value) connect();
+	} catch (e) {
+		joinError.value = (e as Error).message === "Not found" ? "There's no board with this code." : (e as Error).message;
+	} finally {
+		joining.value = false;
+	}
+}
+// The create password makes you the host (lost host key, or a board from before hosts).
+async function becomeHost() {
+	if (joining.value) return;
+	joinError.value = "";
+	joining.value = true;
+	try {
+		const res = await post<{ hostKey: string; pass: string }>(`/api/boards/${props.code}/host`, { password: adminPassword.value });
+		save(hostKeyName, res.hostKey);
+		save(passKey, res.pass);
+		pass.value = res.pass;
+		adminPassword.value = "";
+		claiming.value = false;
+		ws?.close();
+		if (name.value) connect();
+	} catch (e) {
+		joinError.value = (e as Error).message;
+	} finally {
+		joining.value = false;
+	}
+}
+// The host asks for the PIN when it's due to change.
+let pinTimer = 0;
+function askPin() {
+	clearTimeout(pinTimer);
+	if (state.value?.host) send({ type: "pin" });
+}
+onUnmounted(() => clearTimeout(pinTimer));
 
 // Returns false when not connected, so callers can keep what the person typed.
 function send(msg: object) {
@@ -167,7 +243,7 @@ function setName() {
 	const first = !name.value;
 	name.value = n;
 	save("name", n);
-	if (first) connect();
+	if (first && pass.value) connect();
 	else send({ type: "name", name: n });
 }
 
@@ -180,26 +256,6 @@ function add(col: string) {
 	drafts.value[col] = "";
 	saved.value = col;
 	setTimeout(() => saved.value === col && (saved.value = ""), 900);
-}
-const locking = ref(false);
-const lockEl = ref<HTMLElement>();
-useDismiss(showLock, lockEl);
-const errorKey = ref(0);
-async function setLocked(locked: boolean) {
-	if (locking.value) return;
-	error.value = "";
-	if (props.demo) return send({ type: "lock", locked });
-	locking.value = true;
-	try {
-		await post(`/api/boards/${props.code}/lock`, { password: lockPassword.value, locked });
-		showLock.value = false;
-		lockPassword.value = "";
-	} catch (e) {
-		error.value = (e as Error).message;
-		errorKey.value++;
-	} finally {
-		locking.value = false;
-	}
 }
 function startOver() {
 	resetDemo();
@@ -368,7 +424,37 @@ const phaseLabel = computed(() =>
 </script>
 
 <template>
-	<form v-if="!name" class="gate panel" @submit.prevent="setName">
+	<form v-if="!pass && !claiming" class="gate panel" @submit.prevent="joinWithPin">
+		<Mascot :size="64" class="gate-mascot" follow />
+		<h1>Enter the PIN</h1>
+		<p class="muted">It's on the host's screen and changes every minute.</p>
+		<input
+			v-model="pinDraft"
+			class="pin-input mono"
+			inputmode="numeric"
+			autocomplete="one-time-code"
+			maxlength="7"
+			placeholder="000 000"
+			aria-label="Join PIN"
+			required
+			autofocus
+		/>
+		<p v-if="joinError" :key="joinError" class="error" role="alert">{{ joinError }}</p>
+		<button class="primary" :aria-busy="joining">Join board</button>
+		<a href="#" class="small" @click.prevent="claiming = true; joinError = ''">I'm the host</a>
+	</form>
+
+	<form v-else-if="!pass" class="gate panel" @submit.prevent="becomeHost">
+		<Mascot :size="64" class="gate-mascot" follow />
+		<h1>Host this board</h1>
+		<p class="muted">Use the password for creating boards.</p>
+		<input v-model="adminPassword" type="password" placeholder="Password" aria-label="Password" required autofocus />
+		<p v-if="joinError" :key="joinError" class="error" role="alert">{{ joinError }}</p>
+		<button class="primary" :aria-busy="joining">Continue</button>
+		<a href="#" class="small" @click.prevent="claiming = false; joinError = ''">Back to the PIN</a>
+	</form>
+
+	<form v-else-if="!name" class="gate panel" @submit.prevent="setName">
 		<Mascot :size="64" class="gate-mascot" follow />
 		<h1>What's your name?</h1>
 		<input id="name" v-model="nameDraft" maxlength="40" placeholder="Your name" aria-label="Your name" required autofocus />
@@ -403,6 +489,7 @@ const phaseLabel = computed(() =>
 			<span class="phase" :class="state.phase">{{ phaseLabel }}</span>
 			<span v-if="state.team?.host" class="host" title="This retro's MC, picked last sprint">👑 {{ state.team.host }}</span>
 			<div class="actions">
+			<HostPin v-if="state.host && !demo" :code="code" :pin="pin" :offset="offset" @reset="send({ type: 'reset' })" />
 			<div class="people" :aria-label="`Online: ${state.online.join(', ')}`">
 				<span v-for="p in state.online.slice(0, 6)" :key="p" class="bubble" :class="{ typing: isTyping(p) }" :style="bubble(p)" :title="isTyping(p) ? `${p} is writing` : p">{{ initials(p) }}</span>
 				<span v-if="state.online.length > 6" class="bubble more">+{{ state.online.length - 6 }}</span>
@@ -438,23 +525,15 @@ const phaseLabel = computed(() =>
 			>
 				Reveal
 			</ConfirmButton>
-			<span ref="lockEl" class="lock-wrap">
-				<button
-					class="ghost icon-btn"
-					:title="state.phase === 'locked' ? 'Unlock' : 'Lock'"
-					:aria-label="state.phase === 'locked' ? 'Unlock' : 'Lock'"
-					:aria-expanded="demo ? undefined : showLock"
-					@click="demo ? setLocked(state.phase !== 'locked') : (showLock = !showLock)"
-				>
-					<Icon :name="state.phase === 'locked' ? 'unlock' : 'lock'" /><span class="lbl">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</span>
-				</button>
-				<!-- A popover under the button, so asking for the password never changes the header's size. -->
-				<form v-if="showLock && !demo" class="lock-pop" @submit.prevent="setLocked(state.phase !== 'locked')">
-					<label for="lock-pw">{{ state.phase === "locked" ? "Unlock this board" : "Lock this board" }}</label>
-					<input id="lock-pw" v-model="lockPassword" type="password" placeholder="Password" required autofocus />
-					<button class="primary" :aria-busy="locking">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</button>
-				</form>
-			</span>
+			<button
+				v-if="state.host"
+				class="ghost icon-btn"
+				:title="state.phase === 'locked' ? 'Unlock' : 'Lock'"
+				:aria-label="state.phase === 'locked' ? 'Unlock' : 'Lock'"
+				@click="send({ type: 'lock', locked: state.phase !== 'locked' })"
+			>
+				<Icon :name="state.phase === 'locked' ? 'unlock' : 'lock'" /><span class="lbl">{{ state.phase === "locked" ? "Unlock" : "Lock" }}</span>
+			</button>
 			</div>
 		</header>
 		<div v-if="demo" class="demo-banner" role="note">
@@ -464,7 +543,6 @@ const phaseLabel = computed(() =>
 			<ConfirmButton ask="Start the demo over?" yes="Reset" class="small" @confirm="startOver">Reset demo</ConfirmButton>
 			<a href="/" class="small">Back to home</a>
 		</div>
-		<p v-if="error" :key="errorKey" class="error" role="alert">{{ error }}</p>
 
 		<div class="top">
 			<div class="side">
@@ -626,6 +704,15 @@ const phaseLabel = computed(() =>
 	display: grid;
 	gap: 12px;
 	text-align: center;
+}
+.pin-input {
+	font-size: 30px;
+	font-weight: 800;
+	letter-spacing: 6px;
+	text-align: center;
+}
+.gate .small {
+	font-size: 13px;
 }
 .gate h1 {
 	font-size: 24px;
@@ -905,34 +992,6 @@ header h1 {
 	}
 	.demo-banner .short {
 		display: inline;
-	}
-}
-.lock-wrap {
-	position: relative;
-}
-.lock-pop {
-	position: absolute;
-	right: 0;
-	top: calc(100% + 6px);
-	z-index: 20;
-	display: grid;
-	gap: 8px;
-	width: 220px;
-	padding: 12px;
-	background: var(--surface);
-	border: 1.5px solid var(--border);
-	border-radius: 12px;
-	box-shadow: var(--shadow);
-	animation: pop-down 0.18s ease-out;
-}
-.lock-pop label {
-	font-size: 13px;
-	font-weight: 700;
-}
-@keyframes pop-down {
-	from {
-		opacity: 0;
-		translate: 0 -6px;
 	}
 }
 /* Mood and last sprint stacked in the left third, the doodle in the right two-thirds; one column on phones. */

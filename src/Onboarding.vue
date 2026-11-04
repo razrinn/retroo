@@ -17,7 +17,7 @@ const TOURS: Record<"join" | "run", Step[]> = {
 		{ scene: "fun", title: "Have some fun", body: "Rain emoji on everyone, doodle together while you wait. Stickie's face follows the room's mood." },
 	],
 	run: [
-		{ scene: "share", title: "Share the code", body: "Send this code or link to your team. Anyone with it can join." },
+		{ scene: "share", title: "Share the link and PIN", body: "Send the link, then show the join PIN on screen (click it in the header). It changes every minute; once in, people stay in." },
 		{ scene: "guide", title: "Guide the session", body: "Start a timer for writing, Reveal when everyone's ready (the button glows), then Present to go through cards one by one." },
 		{ scene: "wrap", title: "Wrap up", body: "Pick next retro's MC with the crown button, then lock the board. The Summary is ready to paste into Slack, Confluence or Notion." },
 	],

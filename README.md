@@ -17,7 +17,7 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 - **Anonymous cards**: nobody sees who wrote what; comments and reactions show names.
 - **Next MC picker**: a team roster that rotates across retros, revealed by one of ten random shows (wheel, races, claw machine…).
 - **Presenter view**, **shared timer**, **doodle wall** and **emoji rain**.
-- **Join with a code**; one shared password to create boards.
+- **Join with a rotating PIN**, Kahoot-style: the host shows a 6-digit PIN that changes every minute, so a leaked link alone gets nobody in. No accounts; cards stay anonymous. One shared password to create boards (or take over as host).
 
 ## How it works
 
@@ -63,7 +63,7 @@ Local data lives in `.cloudflare/state/`. Delete that folder to start fresh.
    - `cloudflare.config.ts`, `domains: ["retroo.rzrn.dev"]`. Remove the line to use the free `*.workers.dev` address instead.
    - `index.html`, the `og:url` and `og:image` tags (link previews need full URLs).
 
-3. **Choose the password** used to create, list and lock boards (20+ random characters) and put it in `.env.secrets`, which git ignores:
+3. **Choose the password** used to create and list boards, and to take over as a board's host (20+ random characters) and put it in `.env.secrets`, which git ignores:
 
    ```sh
    echo "CREATE_PASSWORD=your-long-random-password" > .env.secrets

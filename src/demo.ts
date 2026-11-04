@@ -93,6 +93,7 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 			followUps: data.followUps,
 			phase: data.phase,
 			live: true,
+			host: true, // you run the demo board
 			online: Object.values(data.people).sort(),
 			now: Date.now(),
 			timerEnd: data.timerEnd,
@@ -227,6 +228,10 @@ export function demoSocket(me: string, name: string, on: Handlers) {
 				on.message({ pick: { show, winner, names: roster.map((m) => m.name), seed: Math.floor(Math.random() * 2 ** 31) } });
 				break;
 			}
+			// The demo has no PIN to share; the host controls work, resetting access does nothing.
+			case "pin":
+			case "reset":
+				return;
 			case "burst":
 				on.message({ burst: msg.emoji, name: data.people[me], from: me });
 				return;

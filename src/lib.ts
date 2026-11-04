@@ -19,6 +19,7 @@ export type Stack = { id: string; col: string; cards: Card[]; total: number };
 export type FollowUp = { id: string; text: string; carried: number; status: "open" | "done" | "dropped" };
 export type Mood = { mine: number | null; rated: number; people: number; counts: number[] | null; average: number | null; previous: number | null };
 export type BoardState = {
+	host: boolean; // you're this board's host: you see the join PIN and can lock, unlock and reset access
 	title: string;
 	previousTitle: string;
 	followUps: FollowUp[];
