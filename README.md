@@ -8,6 +8,7 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 
 ## Features
 
+- **Join with a rotating PIN**, Kahoot-style: the host shares a 6-digit PIN on screen that changes every minute, so a leaked link alone gets nobody in. No accounts, and cards stay anonymous.
 - **Live or hidden:** cards appear as they're written (default), or stay face-down until a Reveal.
 - **Reactions and comments** on every card; drag similar cards together to group them.
 - **Team mood** each sprint, compared with the last one.
@@ -17,7 +18,6 @@ Try it without an account at `/demo` on any deployment (for example [retroo.rzrn
 - **Anonymous cards**: nobody sees who wrote what; comments and reactions show names.
 - **Next MC picker**: a team roster that rotates across retros, revealed by one of ten random shows (wheel, races, claw machine…).
 - **Presenter view**, **shared timer**, **doodle wall** and **emoji rain**.
-- **Join with a rotating PIN**, Kahoot-style: the host shows a 6-digit PIN that changes every minute, so a leaked link alone gets nobody in. No accounts; cards stay anonymous. One shared password to create boards (or take over as host).
 
 ## How it works
 
@@ -28,10 +28,23 @@ Browser (Vue)  ──WebSocket──►  Worker  ──►  Durable Object "Boar
 ```
 
 - **Worker** (`src/worker.ts`) serves the built app and routes `/api/*`.
-- **Board Durable Object** holds a board's cards, reactions, comments, moods and doodle in its own SQLite, and pushes updates to everyone over hibernating WebSockets.
-- **D1** stores only the list of boards.
+- **Board Durable Object** holds a board's cards, reactions, comments, moods, doodle, MC roster and access keys in its own SQLite, and pushes updates to everyone over hibernating WebSockets.
+- **D1** stores only the list of boards; the Worker checks it before sending anyone to a board, so unknown codes never create storage.
 - **Frontend** is Vue 3 + Vite with the Cloudflare Vite plugin, so `pnpm dev` runs the real Worker and Durable Objects locally.
 - Tooling is the [`cf` CLI](https://github.com/cloudflare/cf) (beta) with `cloudflare.config.ts`.
+
+## Access and security
+
+There are no accounts. Access works like Kahoot:
+
+- **Hosts.** Whoever creates a board is its host; their browser keeps a host key. The host sees the join PIN, and can lock, unlock and reset access. **Copy host link** (in the join view) makes another device a host too. Anyone with the create password can also take over as host, via **I'm the host** on the PIN screen.
+- **Joining.** The host shares the join view on screen: the board link and a 6-digit PIN that changes every minute (the previous minute's PIN still works). **Copy invite** gives a link with the current PIN for people not watching; it stops working with the PIN. The PIN and host key ride after `#` in links, which browsers never send to a server.
+- **Passes.** A correct PIN gives your browser a pass for that board, so you don't need the PIN again. It's sent in the WebSocket handshake (never the URL) and is your identity on the board, so nobody can act as you by copying a browser id. **Reset access** cancels everyone's pass but the host's; people rejoin with the new PIN.
+- **Anonymity.** Cards are stored with a random id for their author, never shown to anyone; names only appear on comments and reactions. No emails, no tracking.
+- **Limits.** 10 wrong PINs per board per minute; 10 wrong create passwords per address per 15 minutes; 60 messages per person per 10 seconds; at most 400 cards, 1,500 comments and 300 people per board.
+- **Headers.** `public/_headers` sets a Content-Security-Policy (this site only, no inline scripts), blocks framing, and turns on HSTS and nosniff.
+
+The `/demo` board needs no PIN; it lives in your browser only.
 
 ## Develop
 
@@ -79,6 +92,8 @@ Local data lives in `.cloudflare/state/`. Delete that folder to start fresh.
 
 Later updates are just `pnpm run deploy`; data and the password stay. To change the password, edit `.env.secrets` and deploy with `--secrets-file` again.
 
+**Upgrading from a version without join PINs:** existing boards have no host yet. Open one, choose **I'm the host**, and enter the create password; then share the PIN as usual. Everyone else joins once with the PIN, and their own older cards stay theirs.
+
 ### Free tier
 
 Everything here is on the Workers Free plan: Durable Objects with SQLite storage, D1, and static assets. A team retro uses a tiny fraction of the daily limits (100k requests, 5 GB storage). Going over a limit makes requests fail until 00:00 UTC; it never bills you.
@@ -89,6 +104,8 @@ Everything here is on the Workers Free plan: Durable Objects with SQLite storage
 src/worker.ts         Worker routes and the Board Durable Object
 src/Board.vue         The board screen
 src/NoteCard.vue      A card with reactions and comments
+src/JoinView.vue      The host's join view: PIN, invite and host links, reset access
+src/Picker.vue        Next MC picker; the ten shows are in src/shows/
 src/Presenter.vue     Presenter view
 src/Doodle.vue        Doodle wall
 src/EmojiRain.vue     Emoji rain and combos

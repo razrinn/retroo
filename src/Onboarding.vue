@@ -17,7 +17,7 @@ const TOURS: Record<"join" | "run", Step[]> = {
 		{ scene: "fun", title: "Have some fun", body: "Rain emoji on everyone, doodle together while you wait. Stickie's face follows the room's mood." },
 	],
 	run: [
-		{ scene: "share", title: "Share the link and PIN", body: "Send the link, then show the join PIN on screen (click it in the header). It changes every minute; once in, people stay in." },
+		{ scene: "share", title: "Share the link and PIN", body: "Share your screen with the join view (click the PIN in the header). The PIN changes every minute, and Copy invite sends it to anyone not watching. Once in, people stay in." },
 		{ scene: "guide", title: "Guide the session", body: "Start a timer for writing, Reveal when everyone's ready (the button glows), then Present to go through cards one by one." },
 		{ scene: "wrap", title: "Wrap up", body: "Pick next retro's MC with the crown button, then lock the board. The Summary is ready to paste into Slack, Confluence or Notion." },
 	],
@@ -111,11 +111,12 @@ async function copyLink() {
 						<Mascot class="hopper" :size="70" :mood="5" />
 					</template>
 
-					<!-- Share: the real board code with a copy button. -->
+					<!-- Share: the real board link to copy, and a sample join PIN with its minute running down. -->
 					<template v-else-if="step.scene === 'share'">
-						<Mascot :size="54" />
 						<button class="code mono" @click="copyLink">{{ copied ? "Link copied" : code }}</button>
-						<p class="muted hint">Click to copy the link</p>
+						<p class="pin mono" aria-hidden="true">482 913</p>
+						<span class="pin-bar" aria-hidden="true"><span /></span>
+						<p class="muted hint">The PIN on your screen changes every minute</p>
 					</template>
 
 					<!-- Guide (Live boards): timer, then Present glows, then Summary. -->
@@ -577,6 +578,33 @@ footer {
 .hint {
 	margin: 0;
 	font-size: 12px;
+}
+.pin {
+	margin: 4px 0 0;
+	font-size: 38px;
+	font-weight: 800;
+	letter-spacing: 4px;
+	color: var(--accent);
+	line-height: 1;
+}
+.pin-bar {
+	width: 140px;
+	height: 5px;
+	border-radius: 5px;
+	background: var(--accent-soft);
+	overflow: hidden;
+}
+.pin-bar span {
+	display: block;
+	height: 100%;
+	background: var(--accent);
+	transform-origin: left;
+	animation: drain 4s linear infinite;
+}
+@keyframes drain {
+	to {
+		transform: scaleX(0);
+	}
 }
 .guide-row {
 	display: flex;
